@@ -4,7 +4,7 @@
 #     "marimo",
 #     "numpy",
 #     "pandas",
-#     "plotly @ ./wheels/plotly-6.7.0-py3-none-any.whl",
+#     "plotly==6.7.0",
 #     "pyarrow",
 # ]
 # ///
