@@ -39,9 +39,16 @@ jobs:
           # No, it should not be an action. As otherwise can't run before push
           uv run .github/scripts/build.py  # This script exports all notebooks to the _site directory
           
-          # Copy custom.css and assets into _site so GitHub Pages can serve them
+          # Copy custom.css into the root of _site
           cp apps/custom.css _site/ 2>/dev/null || true
           cp custom.css _site/ 2>/dev/null || true
+          
+          # 🚨 CRITICAL FIX: Copy custom.css into the apps/ folder where the HTML files actually live!
+          mkdir -p _site/apps
+          cp apps/custom.css _site/apps/ 2>/dev/null || true
+          cp custom.css _site/apps/ 2>/dev/null || true
+          
+          # Copy the rest of the assets
           cp -r apps/images _site/ 2>/dev/null || true
           cp -r apps/public _site/ 2>/dev/null || true
           cp apps/title-slide.html _site/ 2>/dev/null || true
