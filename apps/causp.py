@@ -34,66 +34,66 @@ def _():
     import numpy as np
     import pyarrow
 
-    def fetch_text(location):
-        """Fetch text content from local Path or WASM URLPath."""
-        if isinstance(location, Path):
-            return location.read_text(encoding="utf-8")
-        else:
-            url = str(location)
-            with urllib.request.urlopen(url) as response:
-                return response.read().decode("utf-8")
+    # def fetch_text(location):
+    #     """Fetch text content from local Path or WASM URLPath."""
+    #     if isinstance(location, Path):
+    #         return location.read_text(encoding="utf-8")
+    #     else:
+    #         url = str(location)
+    #         with urllib.request.urlopen(url) as response:
+    #             return response.read().decode("utf-8")
 
 
-    def fetch_bytes(location):
-        """Fetch binary content from local Path or WASM URLPath."""
-        if isinstance(location, Path):
-            return location.read_bytes()
-        else:
-            url = str(location)
-            with urllib.request.urlopen(url) as response:
-                return response.read()
+    # def fetch_bytes(location):
+    #     """Fetch binary content from local Path or WASM URLPath."""
+    #     if isinstance(location, Path):
+    #         return location.read_bytes()
+    #     else:
+    #         url = str(location)
+    #         with urllib.request.urlopen(url) as response:
+    #             return response.read()
 
 
-    def load_title_html_with_images():
-        base_dir = mo.notebook_location()
-        html_file = base_dir / "title-slide.html"
+    # def load_title_html_with_images():
+    #     base_dir = mo.notebook_location()
+    #     html_file = base_dir / "title-slide.html"
 
-        # Read HTML content (works both locally and on GitHub Pages WASM)
-        html_content = fetch_text(html_file)
+    #     # Read HTML content (works both locally and on GitHub Pages WASM)
+    #     html_content = fetch_text(html_file)
 
-        # Helper function to convert relative image paths (e.g. "images/cu.png") to Base64
-        def replace_image_src(match):
-            rel_path = match.group(1)
-            image_file = base_dir / rel_path
+    #     # Helper function to convert relative image paths (e.g. "images/cu.png") to Base64
+    #     def replace_image_src(match):
+    #         rel_path = match.group(1)
+    #         image_file = base_dir / rel_path
 
-            try:
-                image_bytes = fetch_bytes(image_file)
-                ext = rel_path.split(".")[-1].lower()
-                mime_type = "image/png" if ext == "png" else f"image/{ext}"
-                encoded_bytes = base64.b64encode(image_bytes).decode("utf-8")
-                return f'src="data:{mime_type};base64,{encoded_bytes}"'
-            except Exception:
-                return match.group(0)
+    #         try:
+    #             image_bytes = fetch_bytes(image_file)
+    #             ext = rel_path.split(".")[-1].lower()
+    #             mime_type = "image/png" if ext == "png" else f"image/{ext}"
+    #             encoded_bytes = base64.b64encode(image_bytes).decode("utf-8")
+    #             return f'src="data:{mime_type};base64,{encoded_bytes}"'
+    #         except Exception:
+    #             return match.group(0)
 
-        # Automatically find and replace all img src="..." paths
-        processed_html = re.sub(
-            r'src="([^"]+\.(?:png|jpg|jpeg|svg|webp))"',
-            replace_image_src,
-            html_content,
-        )
-        return processed_html
-    # import marimo as mo
-    # from pathlib import Path
+    #     # Automatically find and replace all img src="..." paths
+    #     processed_html = re.sub(
+    #         r'src="([^"]+\.(?:png|jpg|jpeg|svg|webp))"',
+    #         replace_image_src,
+    #         html_content,
+    #     )
+    #     return processed_html
+    # # import marimo as mo
+    # # from pathlib import Path
 
-    # # Ensures the path resolves correctly regardless of current working directory
-    # html_path = mo.notebook_location() / "title-slide.html"
-    # mo.Html(html_path.read_text(encoding="utf-8"))
-    # Load and apply custom CSS reliably across Local & WASM environments
-    # _css_content = fetch_text(mo.notebook_location() / "marimo.css")
-    # mo.Html(f"<style>{_css_content}</style>")
+    # # # Ensures the path resolves correctly regardless of current working directory
+    # # html_path = mo.notebook_location() / "title-slide.html"
+    # # mo.Html(html_path.read_text(encoding="utf-8"))
+    # # Load and apply custom CSS reliably across Local & WASM environments
+    # # _css_content = fetch_text(mo.notebook_location() / "marimo.css")
+    # # mo.Html(f"<style>{_css_content}</style>")
 
-    # Display the title slide with all embedded logos
-    mo.Html(load_title_html_with_images())
+    # # Display the title slide with all embedded logos
+    # mo.Html(load_title_html_with_images())
     return io, mo, np, pd, urllib
 
 
