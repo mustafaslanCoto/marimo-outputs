@@ -38,6 +38,14 @@ jobs:
           # can use it without forking or copying it
           # No, it should not be an action. As otherwise can't run before push
           uv run .github/scripts/build.py  # This script exports all notebooks to the _site directory
+          
+          # Copy custom.css and assets into _site so GitHub Pages can serve them
+          cp apps/custom.css _site/ 2>/dev/null || true
+          cp custom.css _site/ 2>/dev/null || true
+          cp -r apps/images _site/ 2>/dev/null || true
+          cp -r apps/public _site/ 2>/dev/null || true
+          cp apps/title-slide.html _site/ 2>/dev/null || true
+
           tree _site                       # Display the exported files
     
       # Upload the generated site as an artifact for the deploy job

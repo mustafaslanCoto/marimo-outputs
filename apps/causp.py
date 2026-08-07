@@ -24,11 +24,11 @@ app = marimo.App(
 
 @app.cell
 def _():
+    import marimo as mo
     import base64
     from pathlib import Path
     import re
     import urllib.request
-    import marimo as mo
     import io
     import pandas as pd
     import numpy as np
@@ -93,36 +93,11 @@ def _():
     # mo.Html(f"<style>{_css_content}</style>")
 
     # Display the title slide with all embedded logos
-    # mo.Html(load_title_html_with_images())
+    mo.Html(load_title_html_with_images())
         # Load and apply custom CSS reliably across Local & WASM environments
     # _css_content = fetch_text(mo.notebook_location() / "marimo.css")
     # mo.Html(f"<style>{_css_content}</style>")
     return io, mo, np, pd, urllib
-
-
-@app.cell
-def _():
-    # def apply_custom_css(filename="marimo.css"):
-    #     try:
-    #         # 1. Try reading the local file system first (Works on your machine)
-    #         css_path = Path(filename)
-    #         if css_path.exists():
-    #             css_content = css_path.read_text(encoding="utf-8")
-    #             return mo.Html(f"<style>{css_content}</style>")
-        
-    #         # 2. Fallback to HTTP request (Works in WASM / GitHub Pages)
-    #         # Assumes marimo.css is in the same directory as the published HTML
-    #         with urllib.request.urlopen(f"./{filename}") as response:
-    #             css_content = response.read().decode("utf-8")
-    #         return mo.Html(f"<style>{css_content}</style>")
-        
-    #     except Exception as e:
-    #         # If both fail, print an invisible HTML comment so you can inspect the error in browser dev tools
-    #         return mo.Html(f"<!-- CSS Load Failed: {e} -->")
-
-    # # This MUST be the last line in the cell to render!
-    # apply_custom_css("marimo.css")
-    return
 
 
 @app.cell
@@ -582,7 +557,7 @@ def _(mo):
 
     # controls_display
 
-    custom_css = mo.Html("""
+    _custom_css = mo.Html("""
     <style>
         /* Scale up the dropdown options text */
         select { 
@@ -616,7 +591,7 @@ def _(mo):
     )
 
     # Output both the hidden CSS block and the UI container
-    mo.vstack([custom_css, controls_display])
+    mo.vstack([_custom_css, controls_display])
 
     # # Just display the UI in this cell
     # mo.hstack([group_select, success_rate], justify="start", gap=2)
