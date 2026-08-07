@@ -65,10 +65,16 @@ jobs:
                           f.write(html)
           '
           
-          # Copy images and assets
+          # Copy images and assets to root
           cp -r apps/images _site/ 2>/dev/null || true
           cp -r apps/public _site/ 2>/dev/null || true
           cp apps/title-slide.html _site/ 2>/dev/null || true
+          
+          # 🚨 CRITICAL FIX: Copy assets to the apps/ folder so notebook can fetch them!
+          mkdir -p _site/apps
+          cp -r apps/images _site/apps/ 2>/dev/null || true
+          cp -r apps/public _site/apps/ 2>/dev/null || true
+          cp apps/title-slide.html _site/apps/ 2>/dev/null || true
 
           tree _site
     
