@@ -2,6 +2,7 @@
 # requires-python = ">=3.11"
 # dependencies = [
 #     "marimo",
+#     "mcp==2.0.0",
 #     "numpy",
 #     "pandas",
 #     "plotly==6.7.0",
@@ -12,13 +13,64 @@
 import marimo
 
 __generated_with = "0.23.16"
-app = marimo.App(width="full", layout_file="layouts/causp.slides.json")
+app = marimo.App(
+    width="full",
+    layout_file="layouts/causp.slides.json",
+    css_file="marimo.css",
+)
 
 
 @app.cell
 def _():
+    # import marimo as mo
+    # from pathlib import Path
+
+    # # Ensures the path resolves correctly regardless of current working directory
+    # html_path = mo.notebook_location() / "title-slide.html"
+    # mo.Html(html_path.read_text(encoding="utf-8"))
+    return
+
+
+@app.cell
+def _():
+    import base64
+    from pathlib import Path
+    import re
     import marimo as mo
 
+
+    def load_title_html_with_images():
+        # Resolve the title-slide.html path relative to the notebook
+        base_dir = mo.notebook_location()
+        html_file = base_dir / "title-slide.html"
+        html_content = html_file.read_text(encoding="utf-8")
+
+        # Helper function to convert relative image paths (e.g. "images/cu.png") to Base64
+        def replace_image_src(match):
+            rel_path = match.group(1)
+            image_file = base_dir / rel_path
+
+            if image_file.exists():
+                ext = image_file.suffix.lower().lstrip(".")
+                mime_type = "image/png" if ext == "png" else f"image/{ext}"
+                encoded_bytes = base64.b64encode(image_file.read_bytes()).decode(
+                    "utf-8"
+                )
+                return f'src="data:{mime_type};base64,{encoded_bytes}"'
+
+            return match.group(0)
+
+        # Automatically find and replace all img src="..." paths
+        processed_html = re.sub(
+            r'src="([^"]+\.(?:png|jpg|jpeg|svg|webp))"',
+            replace_image_src,
+            html_content,
+        )
+        return processed_html
+
+
+    # Display the title slide with all embedded logos
+    mo.Html(load_title_html_with_images())
     return (mo,)
 
 
@@ -52,14 +104,6 @@ def _():
         return path
 
     return (fetch,)
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    # Causal Impact of Diagnosis on LoS
-    """)
-    return
 
 
 @app.cell(hide_code=True)
