@@ -28,31 +28,44 @@ jobs:
         run: |
           uv run .github/scripts/build.py
           
-          # 🚨 CRITICAL FIX: Strip strict Content Security Policy (CSP) from exported HTML
-          # This prevents the browser from blocking custom.css, favicons, and required JavaScript
+          # 🚨 INJECT CSS DIRECTLY & AGGRESSIVELY STRIP CSP 🚨
+          # This reads your custom.css and bakes it straight into the HTML
+          # avoiding all network paths and strict security blocks.
           python -c '
           import os, re
+          
+          # 1. Find and read the CSS file
+          css_path = "apps/custom.css" if os.path.exists("apps/custom.css") else "custom.css"
+          try:
+              with open(css_path, "r", encoding="utf-8") as f:
+                  css_content = f.read()
+          except Exception as e:
+              css_content = "/* CSS load failed */"
+              
+          style_block = f"\n<style>\n{css_content}\n</style>\n"
+          
+          # 2. Inject CSS and strip CSP from every exported HTML file
           for root, _, files in os.walk("_site"):
-              for f in files:
-                  if f.endswith(".html"):
-                      path = os.path.join(root, f)
-                      with open(path, "r", encoding="utf-8") as file:
-                          content = file.read()
-                      content = re.sub(r"<meta http-equiv=\"Content-Security-Policy\"[^>]*>", "", content)
-                      with open(path, "w", encoding="utf-8") as file:
-                          file.write(content)
+              for file in files:
+                  if file.endswith(".html"):
+                      path = os.path.join(root, file)
+                      with open(path, "r", encoding="utf-8") as f:
+                          html = f.read()
+                          
+                      # Strip CSP tag (case-insensitive to ensure it catches it)
+                      html = re.sub(r"<meta[^>]*content-security-policy[^>]*>", "", html, flags=re.IGNORECASE)
+                      
+                      # Inject styles right before the closing head tag
+                      if "</head>" in html:
+                          html = html.replace("</head>", style_block + "</head>")
+                      else:
+                          html += style_block
+                          
+                      with open(path, "w", encoding="utf-8") as f:
+                          f.write(html)
           '
           
-          # Copy custom.css into the root of _site
-          cp apps/custom.css _site/ 2>/dev/null || true
-          cp custom.css _site/ 2>/dev/null || true
-          
-          # Copy custom.css into the apps/ folder where the HTML files actually live
-          mkdir -p _site/apps
-          cp apps/custom.css _site/apps/ 2>/dev/null || true
-          cp custom.css _site/apps/ 2>/dev/null || true
-          
-          # Copy the rest of the assets
+          # Copy images and assets
           cp -r apps/images _site/ 2>/dev/null || true
           cp -r apps/public _site/ 2>/dev/null || true
           cp apps/title-slide.html _site/ 2>/dev/null || true
