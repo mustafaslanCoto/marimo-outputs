@@ -64,5 +64,3 @@ This will export all notebooks in a folder called `_site/` in the root directory
 ```bash
 python -m http.server -d _site
 ```
-
-This will serve the site at `http://localhost:8000`.
