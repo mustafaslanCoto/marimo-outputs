@@ -16,8 +16,9 @@ __generated_with = "0.23.16"
 app = marimo.App(
     width="full",
     layout_file="layouts/causp.slides.json",
-    css_file="",
+    css_file="marimo.css",
     html_head_file="",
+    auto_download=["html"],
 )
 
 
@@ -88,8 +89,8 @@ def _():
     # html_path = mo.notebook_location() / "title-slide.html"
     # mo.Html(html_path.read_text(encoding="utf-8"))
     # Load and apply custom CSS reliably across Local & WASM environments
-    _css_content = fetch_text(mo.notebook_location() / "marimo.css")
-    mo.Html(f"<style>{_css_content}</style>")
+    # _css_content = fetch_text(mo.notebook_location() / "marimo.css")
+    # mo.Html(f"<style>{_css_content}</style>")
 
     # Display the title slide with all embedded logos
     mo.Html(load_title_html_with_images())
