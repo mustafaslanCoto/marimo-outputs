@@ -16,7 +16,7 @@ __generated_with = "0.23.16"
 app = marimo.App(
     width="full",
     layout_file="layouts/causp.slides.json",
-    css_file="custom.css",
+    css_file="css/custom.css",
     html_head_file="",
     auto_download=["html"],
 )
@@ -55,7 +55,7 @@ def _():
 
 
     def load_title_html_with_images():
-        base_dir = mo.notebook_location()
+        base_dir = mo.notebook_location() / "html"
         html_file = base_dir / "title-slide.html"
 
         # Read HTML content (works both locally and on GitHub Pages WASM)

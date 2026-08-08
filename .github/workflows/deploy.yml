@@ -1,5 +1,4 @@
 # This workflow builds and deploys marimo notebooks to GitHub Pages
-# It runs automatically when changes are pushed to the main branch or can be triggered manually
 
 name: Deploy to GitHub Pages
 
@@ -28,53 +27,60 @@ jobs:
         run: |
           uv run .github/scripts/build.py
           
-          # 🚨 INJECT CSS DIRECTLY & AGGRESSIVELY STRIP CSP 🚨
-          # This reads your custom.css and bakes it straight into the HTML
-          # avoiding all network paths and strict security blocks.
+          # 🚨 DYNAMIC CSS INJECTION FROM NEW FOLDERS 🚨
           python -c '
           import os, re
           
-          # 1. Find and read the CSS file
-          css_path = "apps/custom.css" if os.path.exists("apps/custom.css") else "custom.css"
-          try:
-              with open(css_path, "r", encoding="utf-8") as f:
-                  css_content = f.read()
-          except Exception as e:
-              css_content = "/* CSS load failed */"
-              
-          style_block = f"\n<style>\n{css_content}\n</style>\n"
-          
-          # 2. Inject CSS and strip CSP from every exported HTML file
           for root, _, files in os.walk("_site"):
               for file in files:
                   if file.endswith(".html"):
-                      path = os.path.join(root, file)
-                      with open(path, "r", encoding="utf-8") as f:
+                      html_path = os.path.join(root, file)
+                      app_name = file.replace(".html", "")
+                      
+                      # 1. Look for CSS in the new css folders (checks both apps/css and root css)
+                      css_candidates = [f"apps/css/{app_name}.css", f"css/{app_name}.css", "apps/css/custom.css", "css/custom.css"]
+                      css_content = ""
+                      for css_path in css_candidates:
+                          if os.path.exists(css_path):
+                              with open(css_path, "r", encoding="utf-8") as f:
+                                  css_content = f.read()
+                              break
+                              
+                      if css_content:
+                          style_block = f"\n<style>\n{css_content}\n</style>\n"
+                      else:
+                          style_block = ""
+                          
+                      # 2. Inject CSS and strip CSP
+                      with open(html_path, "r", encoding="utf-8") as f:
                           html = f.read()
                           
-                      # Strip CSP tag (case-insensitive to ensure it catches it)
                       html = re.sub(r"<meta[^>]*content-security-policy[^>]*>", "", html, flags=re.IGNORECASE)
                       
-                      # Inject styles right before the closing head tag
-                      if "</head>" in html:
-                          html = html.replace("</head>", style_block + "</head>")
-                      else:
-                          html += style_block
-                          
-                      with open(path, "w", encoding="utf-8") as f:
+                      if style_block:
+                          if "</head>" in html:
+                              html = html.replace("</head>", style_block + "</head>")
+                          else:
+                              html += style_block
+                              
+                      with open(html_path, "w", encoding="utf-8") as f:
                           f.write(html)
           '
           
-          # Copy images and assets to root
-          cp -r apps/images _site/ 2>/dev/null || true
-          cp -r apps/public _site/ 2>/dev/null || true
-          cp apps/title-slide.html _site/ 2>/dev/null || true
-          
-          # 🚨 CRITICAL FIX: Copy assets to the apps/ folder so notebook can fetch them!
+          # Create apps directory for final deployment
           mkdir -p _site/apps
+          
+          # Copy images and assets
           cp -r apps/images _site/apps/ 2>/dev/null || true
           cp -r apps/public _site/apps/ 2>/dev/null || true
-          cp apps/title-slide.html _site/apps/ 2>/dev/null || true
+          
+          # 🚨 CRITICAL FIX: Copy the new html and css folders to the deployment site
+          cp -r apps/html _site/apps/ 2>/dev/null || true
+          cp -r apps/css _site/apps/ 2>/dev/null || true
+          
+          # (Fallback rules just in case you put the folders in the root instead of apps/)
+          cp -r html _site/apps/ 2>/dev/null || true
+          cp -r css _site/apps/ 2>/dev/null || true
 
           tree _site
     
