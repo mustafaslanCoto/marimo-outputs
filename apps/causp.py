@@ -24,14 +24,15 @@ app = marimo.App(
 
 @app.cell
 def _():
-    import marimo as mo
     import base64
+    import io
     from pathlib import Path
     import re
     import urllib.request
-    import io
-    import pandas as pd
+
+    import marimo as mo
     import numpy as np
+    import pandas as pd
     import pyarrow
 
     def fetch_text(location):
@@ -43,7 +44,6 @@ def _():
             with urllib.request.urlopen(url) as response:
                 return response.read().decode("utf-8")
 
-
     def fetch_bytes(location):
         """Fetch binary content from local Path or WASM URLPath."""
         if isinstance(location, Path):
@@ -53,9 +53,9 @@ def _():
             with urllib.request.urlopen(url) as response:
                 return response.read()
 
-
     def load_title_html_with_images():
-        base_dir = mo.notebook_location() / "html"
+        notebook_loc = mo.notebook_location() or Path.cwd()
+        base_dir = notebook_loc / "html"
         html_file = base_dir / "title-slide.html"
 
         # Read HTML content (works both locally and on GitHub Pages WASM)
@@ -82,21 +82,9 @@ def _():
             html_content,
         )
         return processed_html
-    # import marimo as mo
-    # from pathlib import Path
-
-    # # Ensures the path resolves correctly regardless of current working directory
-    # html_path = mo.notebook_location() / "title-slide.html"
-    # mo.Html(html_path.read_text(encoding="utf-8"))
-    # Load and apply custom CSS reliably across Local & WASM environments
-    # _css_content = fetch_text(mo.notebook_location() / "marimo.css")
-    # mo.Html(f"<style>{_css_content}</style>")
 
     # Display the title slide with all embedded logos
     mo.Html(load_title_html_with_images())
-        # Load and apply custom CSS reliably across Local & WASM environments
-    # _css_content = fetch_text(mo.notebook_location() / "marimo.css")
-    # mo.Html(f"<style>{_css_content}</style>")
     return io, mo, np, pd, urllib
 
 
