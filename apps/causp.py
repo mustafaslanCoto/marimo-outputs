@@ -12,7 +12,7 @@
 
 import marimo
 
-__generated_with = "0.23.16"
+__generated_with = "0.24.0"
 app = marimo.App(
     width="full",
     layout_file="layouts/causp.slides.json",
@@ -197,6 +197,7 @@ def _(fetch, mo, pd):
     diags = pd.read_csv(fetch(data_path / "caus_hrg_lgb.csv"), sep=None, engine='python')
     diags = diags.merge(order_df, on='profile', how ='left')
     diags.rename(columns={"proportion": "dominance"}, inplace=True)
+    diags.sort_values("dominance", ascending=False, inplace=True)
     # diags["dominance"] = diags["dominance"]*100
     cleand_df = pd.read_parquet(fetch(data_path /"clean_df_present.parquet"))
     # cleand_df.to_csv(data_path / "clean_df_present.csv", index=False)
@@ -505,24 +506,33 @@ def _():
 
 
 @app.cell
-def _(mo):
-    # Create the UI elements
-    my_options = {
-        "📁 Uncoded Group (+3.34 days - 28.7% dominance)": "unknown", 
-        "🏥 HE11 (7.44 days - 1.5% dominance)": "HE11",
-        "🏥 HE (0.78 days - 1.8% dominance)": "HE",
-        "⭐ Combined (All 3 Groups)": "combined"
-    }
+def _(diags, mo):
+    # 1. Dynamically build options for all groups with positive ATE days
+    pos_diags = diags[diags["ate_days"] > 0].copy()
+
+    my_options = {}
+    for _, row in pos_diags.iterrows():
+        prof = str(row["profile"])
+        ate = row["ate_days"]
+        dom = row["dominance"] * 100 if row["dominance"] <= 1 else row["dominance"]
+        icon = "📁" if prof == "unknown" else "🏥"
+        label_text = "Uncoded Group" if prof == "unknown" else prof
+    
+        display_str = f"{icon} {label_text} (+{ate:.2f} days - {dom:.1f}% dominance)"
+        my_options[display_str] = prof
+
+    # Add combined option at the end for all positive groups
+    my_options[f"⭐ Combined (All {len(pos_diags)} Positive Groups)"] = "combined"
 
     label_style = "font-size: 18px; font-weight: 600; color: #1e293b;"
 
     group_select = mo.ui.dropdown(
         options=my_options,
-        value="📁 Uncoded Group (+3.34 days - 28.7% dominance)",
+        value=list(my_options.keys())[0],
         label=f"<span style='{label_style}'>Select Diagnosis Group:</span>"
     )
 
-    # 2. Causal Estimator Metric Selection (Point Estimate vs Uncertainty Bounds)
+    # 2. Causal Estimator Metric Selection
     metric_options = {
         "📊 Point Estimate (ATE - Mean Days)": "ate_days",
         "📉 Conservative Estimate (CI Lower Bound)": "ci_low",
@@ -540,21 +550,16 @@ def _(mo):
         stop=100, 
         step=5, 
         value=100, 
-        label=f"<span style='{label_style}'>Ambiguity Resolution Success Rate (%):</span>"
+        label=f"<span style='{label_style}'>Ambiguity Resolution Success Rate (%):</span>" 
     )
-
-    # controls_display
 
     _custom_css = mo.Html("""
     <style>
-        /* Scale up the dropdown options text */
         select { 
             font-size: 16px !important; 
             padding: 6px 10px !important; 
             cursor: pointer;
         }
-
-        /* Slightly enlarge the slider track for better UX */
         input[type=range] { 
             transform: scale(1.1); 
             margin-left: 8px; 
@@ -563,7 +568,6 @@ def _(mo):
     </style>
     """)
 
-    # 4. Container Styling
     controls_display = mo.hstack(
         [group_select, metric_select, success_rate], 
         justify="start", 
@@ -574,11 +578,10 @@ def _(mo):
             "background-color": "#f8fafc", 
             "border-radius": "12px",
             "border": "1px solid #e2e8f0",
-            "align-items": "center" # Keeps the text and sliders vertically aligned
+            "align-items": "center"
         }
     )
 
-    # Output both the hidden CSS block and the UI container
     mo.vstack([_custom_css, controls_display])
 
     # # Just display the UI in this cell
@@ -588,58 +591,53 @@ def _(mo):
 
 @app.cell
 def _(cleand_df, diags, group_select, metric_select, mo, success_rate):
-    # Counterfactual calculations (without leading underscores)
+    # Counterfactual calculations
     test_cut = "2025-03-01"
     clean_test = cleand_df[cleand_df["HS_START_DATE"] >= test_cut]
     total_admits = clean_test.shape[0]
-    # 1. Filter the dataset based on dropdown selection
+
+    # List of all groups with positive ATE from diags
+    positive_groups = diags[diags["ate_days"] > 0]["profile"].tolist()
+
     selected_group = group_select.value
 
     if selected_group == "combined":
-        active_diag = clean_test[clean_test["group"].isin(["unknown", "HE11", "HE"])]
-        group_label = "Combined Groups"
+        active_diag = clean_test[clean_test["group"].isin(positive_groups)]
+        group_label = "Combined Positive Groups"
 
         # Calculate excess for each subgroup based on its specific baseline
         excess_los = 0
-        for profile in ["unknown", "HE11", "HE"]:
+        for profile in positive_groups:
             sub_group = active_diag[active_diag["group"] == profile]
             len_sub = sub_group.shape[0]
             if not sub_group.empty:
                 baseline = diags.loc[diags["profile"] == profile, metric_select.value].values[0]
-                # excess_los += (sub_group["spell_los"] - baseline).clip(lower=0).sum()
                 excess_los += len_sub * baseline
     else:
         active_diag = clean_test[clean_test["group"] == selected_group]
         len_act = active_diag.shape[0]
         group_label = "Uncoded Group" if selected_group == "unknown" else selected_group
         baseline_los = diags.loc[diags["profile"] == selected_group, metric_select.value].values[0]
-        # excess_los = (active_diag["spell_los"] - baseline_los).clip(lower=0).sum()
-        excess_los = len_act*baseline_los
+        excess_los = len_act * baseline_los
+
     num_admits = active_diag.shape[0]
 
     # Calculate admission ratio
     admits_pct = (num_admits / total_admits * 100.0) if total_admits > 0 else 0.0
-    # 2. Compute excess Length of Stay metrics
-    # mu = diags.loc[0, "ate_days"]
-    # se = diags.loc[0, "se"]
 
-    # # Generate random samples
-    # baseline_los = np.random.normal(mu, se, len(active_diag))
     total_group_los = active_diag["spell_los"].sum()
 
-    # We clip the excess LoS at 0 so patients below baseline don't subtract from the savings
     # Apply the success rate
     rate = success_rate.value / 100.0
     savings_bed_days = excess_los * rate
 
-    # 3. Calculate percentages
+    # Calculate percentages
     pct_saved_group = (savings_bed_days / total_group_los * 100.0) if total_group_los > 0 else 0.0
 
     total_test_cohort_los = clean_test["spell_los"].sum()
     pct_saved_total = (savings_bed_days / total_test_cohort_los * 100.0) if total_test_cohort_los > 0 else 0.0
 
-
-    # 4. Generate the styled cards dynamically
+    # Generate styled cards
     style_base = {
         "padding": "16px",
         "border-radius": "12px",
@@ -704,7 +702,6 @@ def _(cleand_df, diags, group_select, metric_select, mo, success_rate):
         }
     )
 
-
     card_admits = mo.md(
         f"""
         ### 🏥 **Cohort Analysis: {num_admits:,} {group_label} Admissions** out of {total_admits:,} Total
@@ -714,34 +711,23 @@ def _(cleand_df, diags, group_select, metric_select, mo, success_rate):
         style={
             **style_base,
             "border": "2px solid #6366f1",
-            "background-color": "#f5f3ff", # Very light purple
+            "background-color": "#f5f3ff",
             "color": "#4338ca",
-            "flex": "1", # This will make it stretch to fill the width
+            "flex": "1",
         }
     )
 
-    # 5. Assemble the dashboard layout
-    header_label = "Combined High-LoS Groups" if selected_group == "combined" else f"Group '{selected_group}'"
+    # Assemble dashboard layout
+    header_label = "Combined Positive Groups" if selected_group == "combined" else f"Group '{selected_group}'"
     dashboard_header = mo.md(f"#### 🔍 Counterfactual Scenario Results for **{header_label}**")
 
-    # Assemble the dashboard layout
     dashboard_row = mo.hstack(
         [card_total_group, card_savings, card_group_pct, card_total], 
         justify="space-between", 
         align="stretch",
-        gap=1.0 # Reduced gap slightly to fit 5 cards better
+        gap=1.0
     )
 
-    # Wrap controls in a light grey box for better structure
-    # control_panel = mo.md("").style(
-    #     style={
-    #         "background-color": "#f9f9f9", 
-    #         "padding": "20px", 
-    #         "border-radius": "10px", 
-    #         "margin-bottom": "20px"
-    #     }
-    # )
-    # Display header above the metric row
     mo.vstack([dashboard_header, card_admits, dashboard_row])
     return
 
