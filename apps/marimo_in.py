@@ -4,11 +4,8 @@
 #     "marimo>=0.23.3",
 #     "matplotlib",
 #     "numpy",
-#     "optuna==5.0.0",
 #     "pandas",
-#     "peshbeen",
 #     "scikit-learn",
-#     "torch==2.14.1",
 # ]
 # ///
 
@@ -228,11 +225,11 @@ def _(date_picker, hmm_df, mo):
 @app.cell
 def _(ead, model_res):
     # === MODEL TRAINING / PERSISTENT CACHE (Commented out; uncomment if you need to rerun and save) ===
-    from peshbeen.model_selection import SplitTimeSeries
-    from peshbeen.models import ms_arr
-    from peshbeen.transformations import rolling_quantile, fourier_terms
-    from peshbeen.metrics import MSE
-    from sklearn.preprocessing import OneHotEncoder
+    # from peshbeen.model_selection import SplitTimeSeries
+    # from peshbeen.models import ms_arr
+    # from peshbeen.transformations import rolling_quantile, fourier_terms
+    # from peshbeen.metrics import MSE
+    # from sklearn.preprocessing import OneHotEncoder
 
     # val_len = 65
     # train_ead = ead[:-val_len]
@@ -413,6 +410,7 @@ def _(cv_dates, cv_idx_slider, np, p_stay_regime0, p_stay_regime1, plt):
 
     plt.tight_layout()
     plt.gca()
+    return
 
 
 if __name__ == "__main__":
