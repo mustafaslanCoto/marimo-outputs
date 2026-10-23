@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "marimo>=0.25.2",
+#     "marimo>=0.23.3",
 #     "matplotlib",
 #     "numpy",
 #     "optuna==5.0.0",
@@ -14,7 +14,7 @@
 
 import marimo
 
-__generated_with = "0.25.2"
+__generated_with = "0.25.1"
 app = marimo.App(width="full")
 
 
