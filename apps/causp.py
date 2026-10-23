@@ -1,7 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
-#     "marimo",
+#     "marimo>=0.23.3",
 #     "mcp==2.0.0",
 #     "numpy",
 #     "pandas",
@@ -12,7 +12,7 @@
 
 import marimo
 
-__generated_with = "0.24.0"
+__generated_with = "0.25.1"
 app = marimo.App(
     width="full",
     layout_file="layouts/causp.slides.json",
@@ -517,7 +517,7 @@ def _(diags, mo):
         dom = row["dominance"] * 100 if row["dominance"] <= 1 else row["dominance"]
         icon = "📁" if prof == "unknown" else "🏥"
         label_text = "Uncoded Group" if prof == "unknown" else prof
-    
+
         display_str = f"{icon} {label_text} (+{ate:.2f} days - {dom:.1f}% dominance)"
         my_options[display_str] = prof
 

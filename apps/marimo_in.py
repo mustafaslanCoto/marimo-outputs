@@ -295,6 +295,35 @@ def _(mo):
 
 
 @app.cell(hide_code=True)
+def _(mo, model_res, res, train_ead, tsv_opt):
+    # Extract transition probabilities and split cutoffs
+    if tsv_opt is not None:
+        cv_dates = [train_ead.index[train_idx[-1]] for train_idx, _ in tsv_opt.split(train_ead)]
+    elif "cv_dates" in model_res:
+        cv_dates = model_res["cv_dates"]
+    else:
+        # 90 splits, test_size=10, step_size=1
+        _n_splits = len(res["trans_matrix"])
+        _total_eval = 10 + _n_splits - 1
+        _start_idx = len(train_ead) - _total_eval
+        cv_dates = [train_ead.index[_start_idx + _i] for _i in range(_n_splits)]
+
+    p_stay_regime0 = [A[0, 0] for A in res["trans_matrix"]]
+    p_stay_regime1 = [A[1, 1] for A in res["trans_matrix"]]
+
+    cv_idx_slider = mo.ui.slider(
+        start=0,
+        stop=len(cv_dates) - 1,
+        value=len(cv_dates) - 1,
+        step=1,
+        label="🔍 **Inspect CV Split / Date:**",
+        full_width=True
+    )
+    cv_idx_slider
+    return cv_dates, cv_idx_slider, p_stay_regime0, p_stay_regime1
+
+
+@app.cell(hide_code=True)
 def _(cv_dates, cv_idx_slider, np, p_stay_regime0, p_stay_regime1, plt):
     import matplotlib.dates as mdates
 
@@ -384,36 +413,6 @@ def _(cv_dates, cv_idx_slider, np, p_stay_regime0, p_stay_regime1, plt):
 
     plt.tight_layout()
     plt.gca()
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo, model_res, res, train_ead, tsv_opt):
-    # Extract transition probabilities and split cutoffs
-    if tsv_opt is not None:
-        cv_dates = [train_ead.index[train_idx[-1]] for train_idx, _ in tsv_opt.split(train_ead)]
-    elif "cv_dates" in model_res:
-        cv_dates = model_res["cv_dates"]
-    else:
-        # 90 splits, test_size=10, step_size=1
-        _n_splits = len(res["trans_matrix"])
-        _total_eval = 10 + _n_splits - 1
-        _start_idx = len(train_ead) - _total_eval
-        cv_dates = [train_ead.index[_start_idx + _i] for _i in range(_n_splits)]
-
-    p_stay_regime0 = [A[0, 0] for A in res["trans_matrix"]]
-    p_stay_regime1 = [A[1, 1] for A in res["trans_matrix"]]
-
-    cv_idx_slider = mo.ui.slider(
-        start=0,
-        stop=len(cv_dates) - 1,
-        value=len(cv_dates) - 1,
-        step=1,
-        label="🔍 **Inspect CV Split / Date:**",
-        full_width=True
-    )
-    cv_idx_slider
-    return cv_dates, cv_idx_slider, p_stay_regime0, p_stay_regime1
 
 
 if __name__ == "__main__":
