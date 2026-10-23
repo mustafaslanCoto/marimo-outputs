@@ -1,7 +1,21 @@
+# /// script
+# requires-python = ">=3.11"
+# dependencies = [
+#     "marimo>=0.25.2",
+#     "matplotlib",
+#     "numpy",
+#     "optuna==5.0.0",
+#     "pandas",
+#     "peshbeen",
+#     "scikit-learn",
+#     "torch==2.14.1",
+# ]
+# ///
+
 import marimo
 
-__generated_with = "0.25.1"
-app = marimo.App(width="full", layout_file="layouts/marimo_in.slides.json")
+__generated_with = "0.25.2"
+app = marimo.App(width="full")
 
 
 @app.cell
@@ -30,11 +44,14 @@ def _():
     import pandas as pd
     import numpy as np
 
+    def fetch(url):
+        with urlopen(url) as r:
+            return io.BytesIO(r.read())
+
     # Load model results directly from GitHub raw repository (or local fallback)
     _DATA_URL = "https://raw.githubusercontent.com/mustafaslanCoto/mustafaslanCoto.github.io/main/talks/sphere/ms_arr_model_results.pkl"
     try:
-        with urlopen(_DATA_URL) as _resp:
-            model_res = pickle.load(io.BytesIO(_resp.read()))
+        model_res = pickle.load(fetch(_DATA_URL))
     except Exception:
         with open("talks/sphere/ms_arr_model_results.pkl", "rb") as _f:
             model_res = pickle.load(_f)
@@ -43,10 +60,22 @@ def _():
 
     # Load dataset
     all_ead = "https://raw.githubusercontent.com/mustafaslanCoto/mustafaslanCoto.github.io/main/talks/sphere/ead_data.csv"
-    ead = pd.read_csv(all_ead)
+    try:
+        ead = pd.read_csv(fetch(all_ead))
+    except Exception:
+        ead = pd.read_csv("talks/sphere/ead_data.csv")
+
     ead["date"] = pd.to_datetime(ead["date"])
     ead.set_index("date", inplace=True)
-    return LineCollection, LinearSegmentedColormap, ead, hmm_df, np, plt
+    return (
+        LineCollection,
+        LinearSegmentedColormap,
+        ead,
+        hmm_df,
+        model_res,
+        np,
+        plt,
+    )
 
 
 @app.cell
@@ -197,39 +226,63 @@ def _(date_picker, hmm_df, mo):
 
 
 @app.cell
-def _(ead, mo):
+def _(ead, model_res):
+    # === MODEL TRAINING / PERSISTENT CACHE (Commented out; uncomment if you need to rerun and save) ===
     from peshbeen.model_selection import SplitTimeSeries
     from peshbeen.models import ms_arr
     from peshbeen.transformations import rolling_quantile, fourier_terms
     from peshbeen.metrics import MSE
     from sklearn.preprocessing import OneHotEncoder
 
+    # val_len = 65
+    # train_ead = ead[:-val_len]
+
+    # tsv_opt = SplitTimeSeries(n_splits=90, test_size=10, step_size=1)
+    # ohe_encoder = OneHotEncoder(sparse_output=False, handle_unknown='ignore', drop='first')
+    # transformation_function = [rolling_quantile(window_size=49, quantile=0.2, shift=10, min_samples=49)]
+    # cat_vars = ["day", "month", "holiday"]
+
+    # def run_msar():
+    #     model_specs = {"trans_matrix": [], "std": []}
+    #     for idx, (train_index, test_index) in enumerate(tsv_opt.split(train_ead)):
+    #         if idx == 0:
+    #             ms_mod = ms_arr(n_components=2, lags=[4, 8, 10], target_col="ead",
+    #                             cat_variables=cat_vars, categorical_encoder=ohe_encoder, n_iter=100,
+    #                             random_state=42, lag_transform=transformation_function)
+    #         train = train_ead.iloc[train_index]
+    #         test = train_ead.iloc[test_index]
+    #         ms_mod.fit(train)
+    #         if idx % 10 == 0:
+    #             print(f"Iteration: {idx} is done")
+    #         model_specs["trans_matrix"].append(ms_mod.A)
+    #         model_specs["std"].append(ms_mod.stds)
+    #     return model_specs
+
+    # with mo.persistent_cache(name="ms_res", save_path="marimo_res"):
+    #     res = run_msar()
+
+    # === LOAD PRE-COMPUTED MODEL RESULTS DIRECTLY FROM GITHUB ===
+    import io as _io
+    import pickle as _pickle
+    import urllib.request as _urllib_req
+
+    _MS_CACHE_URL = "https://raw.githubusercontent.com/mustafaslanCoto/marimo-outputs/main/apps/marimo_res/ms_res/X_2K4ad7Mx7HLG8VphbAIHCJHm0j4P4BicaMmLPmkr5IU.pickle"
+    try:
+        with _urllib_req.urlopen(_MS_CACHE_URL) as _resp:
+            _cache_obj = _pickle.load(_io.BytesIO(_resp.read()))
+            res = _cache_obj.defs["res"]
+    except Exception:
+        try:
+            with open("marimo_res/ms_res/X_2K4ad7Mx7HLG8VphbAIHCJHm0j4P4BicaMmLPmkr5IU.pickle", "rb") as _f:
+                _cache_obj = _pickle.load(_f)
+                res = _cache_obj.defs["res"]
+        except Exception:
+            # Fallback to model_res already in memory
+            res = model_res["res"]
+
     val_len = 65
     train_ead = ead[:-val_len]
-
-    tsv_opt = SplitTimeSeries(n_splits=90, test_size=10, step_size=1)
-    ohe_encoder = OneHotEncoder(sparse_output=False, handle_unknown='ignore', drop='first')
-    transformation_function = [rolling_quantile(window_size=49, quantile=0.2, shift=10, min_samples=49)]
-    cat_vars = ["day", "month", "holiday"]
-
-    def run_msar():
-        model_specs = {"trans_matrix": [], "std": []}
-        for idx, (train_index, test_index) in enumerate(tsv_opt.split(train_ead)):
-            if idx == 0:
-                ms_mod = ms_arr(n_components=2, lags=[4, 8, 10], target_col="ead",
-                                cat_variables=cat_vars, categorical_encoder=ohe_encoder, n_iter=100,
-                                random_state=42, lag_transform=transformation_function)
-            train = train_ead.iloc[train_index]
-            test = train_ead.iloc[test_index]
-            ms_mod.fit(train)
-            if idx % 10 == 0:
-                print(f"Iteration: {idx} is done")
-            model_specs["trans_matrix"].append(ms_mod.A)
-            model_specs["std"].append(ms_mod.stds)
-        return model_specs
-
-    with mo.persistent_cache(name="ms_res", save_path="marimo_res"):
-        res = run_msar()
+    tsv_opt = None
     return res, train_ead, tsv_opt
 
 
@@ -335,9 +388,19 @@ def _(cv_dates, cv_idx_slider, np, p_stay_regime0, p_stay_regime1, plt):
 
 
 @app.cell(hide_code=True)
-def _(mo, res, train_ead, tsv_opt):
+def _(mo, model_res, res, train_ead, tsv_opt):
     # Extract transition probabilities and split cutoffs
-    cv_dates = [train_ead.index[train_idx[-1]] for train_idx, _ in tsv_opt.split(train_ead)]
+    if tsv_opt is not None:
+        cv_dates = [train_ead.index[train_idx[-1]] for train_idx, _ in tsv_opt.split(train_ead)]
+    elif "cv_dates" in model_res:
+        cv_dates = model_res["cv_dates"]
+    else:
+        # 90 splits, test_size=10, step_size=1
+        _n_splits = len(res["trans_matrix"])
+        _total_eval = 10 + _n_splits - 1
+        _start_idx = len(train_ead) - _total_eval
+        cv_dates = [train_ead.index[_start_idx + _i] for _i in range(_n_splits)]
+
     p_stay_regime0 = [A[0, 0] for A in res["trans_matrix"]]
     p_stay_regime1 = [A[1, 1] for A in res["trans_matrix"]]
 

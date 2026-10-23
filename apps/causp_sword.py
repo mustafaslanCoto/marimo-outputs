@@ -34,16 +34,16 @@ def _(mo):
     import re
     import sys
 
-    _RAW = "https://raw.githubusercontent.com/mustafaslanCoto/mustafaslanCoto.github.io/main/talks"
+    _RAW = "https://raw.githubusercontent.com/mustafaslanCoto/marimo-outputs/main/apps/html"
 
     if sys.platform == "emscripten":
         from pyodide.http import open_url
 
-        _html = open_url(f"{_RAW}/sword2026/title-slide.html").read()
+        _html = open_url(f"{_RAW}/title-sword.html").read()
     else:
         import urllib.request
 
-        _html = urllib.request.urlopen(f"{_RAW}/sword2026/title-slide.html").read().decode("utf-8")
+        _html = urllib.request.urlopen(f"{_RAW}/title-sword.html").read().decode("utf-8") # for local testing
 
     _src = lambda m: f'src="{_RAW}/{m.group(1)}"'
 
@@ -255,8 +255,8 @@ def _():
 
     data_url = (
         "https://raw.githubusercontent.com/"
-        "mustafaslanCoto/mustafaslanCoto.github.io/main/"
-        "talks/sword2026/public"
+        "mustafaslanCoto/marimo-outputs/main/"
+        "apps/public"
     )
     order_df = pd.read_csv(fetch(f"{data_url}/diagnosis_order.csv"))
     diags = pd.read_csv(fetch(f"{data_url}/caus_hrg_lgb.csv"))
