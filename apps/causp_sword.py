@@ -12,10 +12,10 @@
 
 import marimo
 
-__generated_with = "0.25.1"
+__generated_with = "0.25.2"
 app = marimo.App(
     width="full",
-    # layout_file="layouts/causp.slides.json",
+    layout_file="layouts/causp_sword.slides.json",
     css_file="css/custom_sword.css",
     html_head_file="",
     auto_download=["html"],
@@ -37,22 +37,15 @@ def _(mo):
     _RAW = "https://raw.githubusercontent.com/mustafaslanCoto/mustafaslanCoto.github.io/main/talks"
 
     if sys.platform == "emscripten":
-        # exported HTML: read the include and logos straight from the repo
         from pyodide.http import open_url
 
         _html = open_url(f"{_RAW}/sword2026/title-slide.html").read()
-        _src = lambda m: f'src="{_RAW}/{m.group(1)}"'
     else:
-        import base64
-        import mimetypes
+        import urllib.request
 
-        _dir = mo.notebook_dir()
-        _html = (_dir / "title-slide.html").read_text()
+        _html = urllib.request.urlopen(f"{_RAW}/sword2026/title-slide.html").read().decode("utf-8")
 
-        def _src(m):
-            _p = _dir.parent / m.group(1)
-            _mime = mimetypes.guess_type(_p.name)[0] or "image/png"
-            return f'src="data:{_mime};base64,{base64.b64encode(_p.read_bytes()).decode()}"'
+    _src = lambda m: f'src="{_RAW}/{m.group(1)}"'
 
     # drop Quarto's ```{=html} fences; logos live in talks/images
     _html = re.sub(r"^```.*$", "", _html, flags=re.M)
@@ -743,7 +736,7 @@ def _(diags, mo):
             width: 100% !important;
             display: block !important;
         }
-    
+
         /* Only limit the trigger bar, NOT the buttons inside the dropdown */
         marimo-multiselect > div,
         marimo-multiselect div[role="combobox"] {
@@ -1248,16 +1241,7 @@ def _():
 
 @app.cell(hide_code=True)
 def _(mo):
-    import sys as _sys
-
-    _RAW = "https://raw.githubusercontent.com/mustafaslanCoto/mustafaslanCoto.github.io/main/talks/images/follow_us.png"
-    if _sys.platform == "emscripten": ## Use raw URL for Emscripten environment, meaning we can't rely on local file paths
-        _src = _RAW
-    else:
-        import base64 as _b64 # For encoding the local image file as a base64 string
-
-        _p = mo.notebook_dir().parent / "images" / "follow_us.png"
-        _src = "data:image/png;base64," + _b64.b64encode(_p.read_bytes()).decode()
+    _src = "https://raw.githubusercontent.com/mustafaslanCoto/mustafaslanCoto.github.io/main/talks/images/follow_us.png"
 
     _text = mo.md("# Any questions or thoughts? 💬")
     # _text = mo.vstack([_thanks], align="center")
