@@ -1,6 +1,6 @@
 import marimo
 
-__generated_with = "0.25.2"
+__generated_with = "0.25.1"
 app = marimo.App(width="full", layout_file="layouts/marimo_in.slides.json")
 
 
@@ -196,6 +196,43 @@ def _(date_picker, hmm_df, mo):
     return (history_idx_slider,)
 
 
+@app.cell
+def _(ead, mo):
+    from peshbeen.model_selection import SplitTimeSeries
+    from peshbeen.models import ms_arr
+    from peshbeen.transformations import rolling_quantile, fourier_terms
+    from peshbeen.metrics import MSE
+    from sklearn.preprocessing import OneHotEncoder
+
+    val_len = 65
+    train_ead = ead[:-val_len]
+
+    tsv_opt = SplitTimeSeries(n_splits=90, test_size=10, step_size=1)
+    ohe_encoder = OneHotEncoder(sparse_output=False, handle_unknown='ignore', drop='first')
+    transformation_function = [rolling_quantile(window_size=49, quantile=0.2, shift=10, min_samples=49)]
+    cat_vars = ["day", "month", "holiday"]
+
+    def run_msar():
+        model_specs = {"trans_matrix": [], "std": []}
+        for idx, (train_index, test_index) in enumerate(tsv_opt.split(train_ead)):
+            if idx == 0:
+                ms_mod = ms_arr(n_components=2, lags=[4, 8, 10], target_col="ead",
+                                cat_variables=cat_vars, categorical_encoder=ohe_encoder, n_iter=100,
+                                random_state=42, lag_transform=transformation_function)
+            train = train_ead.iloc[train_index]
+            test = train_ead.iloc[test_index]
+            ms_mod.fit(train)
+            if idx % 10 == 0:
+                print(f"Iteration: {idx} is done")
+            model_specs["trans_matrix"].append(ms_mod.A)
+            model_specs["std"].append(ms_mod.stds)
+        return model_specs
+
+    with mo.persistent_cache(name="ms_res", save_path="marimo_res"):
+        res = run_msar()
+    return res, train_ead, tsv_opt
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -314,44 +351,6 @@ def _(mo, res, train_ead, tsv_opt):
     )
     cv_idx_slider
     return cv_dates, cv_idx_slider, p_stay_regime0, p_stay_regime1
-
-
-@app.cell(hide_code=True)
-def _(ead, mo):
-    from peshbeen.model_selection import SplitTimeSeries
-    from peshbeen.models import ms_arr
-    from peshbeen.transformations import rolling_quantile, fourier_terms
-    from peshbeen.metrics import MSE
-    from sklearn.preprocessing import OneHotEncoder
-
-    val_len = 65
-    train_ead = ead[:-val_len]
-
-    tsv_opt = SplitTimeSeries(n_splits=90, test_size=10, step_size=1)
-    ohe_encoder = OneHotEncoder(sparse_output=False, handle_unknown='ignore', drop='first')
-    transformation_function = [rolling_quantile(window_size=49, quantile=0.2, shift=10, min_samples=49)]
-    cat_vars = ["day", "month", "holiday"]
-
-    def run_msar():
-        model_specs = {"trans_matrix": [], "std": []}
-        for idx, (train_index, test_index) in enumerate(tsv_opt.split(train_ead)):
-            if idx == 0:
-                ms_mod = ms_arr(n_components=2, lags=[4, 8, 10], target_col="ead",
-                                cat_variables=cat_vars, categorical_encoder=ohe_encoder, n_iter=100,
-                                random_state=42, lag_transform=transformation_function)
-            train = train_ead.iloc[train_index]
-            test = train_ead.iloc[test_index]
-            ms_mod.fit(train)
-            if idx % 10 == 0:
-                print(f"Iteration: {idx} is done")
-            model_specs["trans_matrix"].append(ms_mod.A)
-            model_specs["std"].append(ms_mod.stds)
-        return model_specs
-
-    with mo.persistent_cache(name="ms_res", save_path="marimo_res"):
-        res = run_msar()
-
-    return res, train_ead, tsv_opt
 
 
 if __name__ == "__main__":
