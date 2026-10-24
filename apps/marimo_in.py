@@ -5,8 +5,7 @@
 #     "matplotlib",
 #     "numpy",
 #     "pandas",
-#     "scikit-learn",
-#     "peshbeen"
+#     "scikit-learn"
 # ]
 # ///
 
