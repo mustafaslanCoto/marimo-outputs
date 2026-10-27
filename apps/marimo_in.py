@@ -65,7 +65,7 @@ def _():
 
     ead["date"] = pd.to_datetime(ead["date"])
     ead.set_index("date", inplace=True)
-    return ead, hmm_df, model_res, np, pd, pickle, plt
+    return ead, fetch, hmm_df, model_res, np, pd, pickle, plt
 
 
 @app.cell
@@ -150,25 +150,6 @@ def _(date_range_bar, hmm_df, mo):
             )
         )
 
-        _line_top = (
-            alt.Chart(_df_chart)
-            .mark_line(strokeWidth=3.2)
-            .encode(
-                x=alt.X("date:T", scale=_x_scale),
-                y=alt.Y("ead:Q"),
-                color=alt.Color(
-                    "regime_2:Q",
-                    scale=alt.Scale(
-                        range=["#20808D", "#D97706", "#C93B2B"],
-                        domain=[0, 0.5, 1.0],
-                    ),
-                    legend=alt.Legend(
-                        title="Peak Risk Prob", orient="right", gradientLength=180
-                    ),
-                ),
-            )
-        )
-
         _points_top = (
             alt.Chart(_df_chart)
             .mark_circle(size=50, stroke="white", strokeWidth=1)
@@ -200,7 +181,7 @@ def _(date_range_bar, hmm_df, mo):
         )
 
         _chart_top = (
-            _area_top + _line_top + _points_top + _rule_top
+            _area_top + _points_top + _rule_top
         ).properties(
             width=880,
             height=250,
@@ -269,8 +250,7 @@ def _(date_range_bar, hmm_df, mo):
 
         alt_chart_display = (
             alt.vconcat(_chart_top, _chart_bottom)
-            .configure_view(stroke=None, fill="#FBFAF4")
-            .configure(background="#FBFAF4")
+            .configure_view(stroke=None)
         )
 
     _selected_days = len(_df_chart)
@@ -480,12 +460,13 @@ def _():
 
 
 @app.cell(hide_code=True)
-def _(mo, pickle):
-    import urllib.request
-
-    _url = "https://raw.githubusercontent.com/mustafaslanCoto/mustafaslanCoto.github.io/main/talks/sphere/cv_results.pkl"
-    with urllib.request.urlopen(_url) as _f:
-        cv_eval_df = pickle.load(_f)["cv_results"]
+def _(fetch, mo, pd):
+    # CSV instead of pickle: pickles are pandas-version specific and fail in the WASM (Pyodide) build
+    _url = "https://raw.githubusercontent.com/mustafaslanCoto/marimo-outputs/main/apps/public/cv_results.csv"
+    try:
+        cv_eval_df = pd.read_csv(fetch(_url), parse_dates=["cutoff", "fold_index"])
+    except Exception:
+        cv_eval_df = pd.read_csv("public/cv_results.csv", parse_dates=["cutoff", "fold_index"])
 
     bound_radio = mo.ui.radio(
         options={"Upper 90% Bound (Ceiling)": "90", "Upper 80% Bound": "80"},
@@ -496,10 +477,18 @@ def _(mo, pickle):
         steps=[0.8, 0.9, 1.0, 1.1, 1.2],
         value=1.0,
         label="Alert Threshold (EAD)",
-        show_value=True,
-
+        show_value=False,
+        full_width=True,
     )
-    mo.hstack([bound_radio, th_slider], justify="start", gap=2)
+    _th_styled = mo.Html(
+        f"""
+        <style>
+        .th-slider {{ width: 800px; max-width: 100%; }}
+        </style>
+        <div class="th-slider">{th_slider}</div>
+        """
+    )
+    mo.vstack([bound_radio, _th_styled], gap=1)
     return bound_radio, cv_eval_df, th_slider
 
 
