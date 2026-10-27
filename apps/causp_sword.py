@@ -1,6 +1,7 @@
 # /// script
 # requires-python = ">=3.11"
 # dependencies = [
+#     "altair==6.3.0",
 #     "marimo>=0.23.3",
 #     "mcp==2.0.0",
 #     "numpy",
@@ -12,7 +13,7 @@
 
 import marimo
 
-__generated_with = "0.25.1"
+__generated_with = "0.25.2"
 app = marimo.App(
     width="full",
     layout_file="layouts/causp_sword.slides.json",
