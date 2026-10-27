@@ -65,7 +65,7 @@ def _():
 
     ead["date"] = pd.to_datetime(ead["date"])
     ead.set_index("date", inplace=True)
-    return ead, fetch, hmm_df, model_res, np, pd, pickle, plt
+    return ead, fetch, hmm_df, model_res, np, pd, plt
 
 
 @app.cell
@@ -454,8 +454,10 @@ def _(cv_dates, cv_idx_slider, np, p_stay_regime0, p_stay_regime1, plt):
 
 
 @app.cell(hide_code=True)
-def _():
+def _(mo):
+    mo.md(r"""
     ## Can Calibrated Uncertainty Bounds Capture Peaks in EAD?
+    """)
     return
 
 
