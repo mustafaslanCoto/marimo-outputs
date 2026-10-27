@@ -275,7 +275,7 @@ def _(date_range_bar, hmm_df, mo):
 
     _selected_days = len(_df_chart)
     _range_info = mo.md(
-        f"&nbsp;•&nbsp; **Window:** `{_selected_days} days`"
+        f"**Window:** `{_selected_days} days`"
     )
 
     mo.vstack([_range_info, alt_chart_display])
@@ -497,11 +497,18 @@ def _(mo, pickle):
         value=1.0,
         label="Alert Threshold (EAD)",
         show_value=True,
-    
+
     )
     mo.hstack([bound_radio, th_slider], justify="start", gap=2)
-
     return bound_radio, cv_eval_df, th_slider
+
+
+@app.cell
+def _(mo, th_slider):
+    mo.Html(
+        f'<div style="font-size:2rem;font-weight:700;color:#2563eb">Alert Threshold: {th_slider.value:.1f} EAD</div>'
+    )
+    return
 
 
 @app.cell(hide_code=True)
@@ -610,7 +617,6 @@ def _(alt, bound_radio, cv_eval_df, mo, pd, th_slider):
         f"• Point Forecast Capture: **{_pt_capt}/{_n_surges} ({_capt_pct:.0f}%)**"
     )
     mo.vstack([mo.ui.altair_chart(cv_alt_chart) if False else cv_alt_chart, _kpi])
-
     return
 
 
