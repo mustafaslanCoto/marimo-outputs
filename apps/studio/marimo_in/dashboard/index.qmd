@@ -1,0 +1,29 @@
+---
+title: "example"
+subtitle: "Marimo In"
+format: revealjs
+---
+
+{{< marimo cell="cell-2" >}}
+
+{{< marimo cell="cell-3" >}}
+
+{{< marimo cell="cell-4" >}}
+
+{{< marimo cell="cell-5" >}}
+
+{{< marimo cell="cell-6" >}}
+
+{{< marimo cell="cell-8" >}}
+
+{{< marimo cell="cell-9" >}}
+
+{{< marimo cell="cell-10" >}}
+
+{{< marimo cell="cell-11" >}}
+
+{{< marimo cell="cell-12" >}}
+
+{{< marimo cell="cell-13" >}}
+
+{{< marimo cell="cell-14" >}}

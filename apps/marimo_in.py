@@ -1,5 +1,5 @@
 # /// script
-# requires-python = ">=3.11"
+# requires-python = ">=3.11,<3.15"
 # dependencies = [
 #     "altair==6.3.0",
 #     "marimo>=0.23.3",
@@ -7,7 +7,39 @@
 #     "numpy",
 #     "pandas",
 #     "scikit-learn",
+#     "marimo-studio[deno]==0.4.1",
+#     "vegafusion==2.0.3",
+#     "openai==3.40.0",
+#     "nbformat==5.11.1",
+#     "ruff>=0.17.3",
+#     "websockets==17.3",
+#     "mcp>=2.0.0",
+#     "polars[pyarrow]==2.1.0",
+#     "marimo-lens>=0.2.3",
+#     "vl-convert-python==1.9.0.post1",
+#     "pytest==9.2.0",
+#     "python-lsp-server==1.15.0",
+#     "python-lsp-ruff==2.3.4",
+#     "duckdb==2.0.0",
+#     "sqlglot==30.25.0"
 # ]
+#
+# [tool.marimo-studio]
+# default = "dashboard"
+#
+# [tool.marimo-studio.cells]
+# cell-2 = {ref = "cell:v1:471a4236d8d74b2c319cea8f07d2a183331865ffddab15acf91511b63e2b5528:8f2418325806ffa353a5a7761666abe14061a79eb06dfa5d292f5349f5074f7d:0"}
+# cell-3 = {ref = "cell:v1:8a6f2da3a0b206664e7ee686cbd6776e3977abaf654c3225127c3bf71a01cc93:8a6f2da3a0b206664e7ee686cbd6776e3977abaf654c3225127c3bf71a01cc93:0"}
+# cell-4 = {ref = "cell:v1:4cf89dedf0888e948f7b51707271921ac9eae915c2d3f9d72cdcecbd7138cfa7:4cf89dedf0888e948f7b51707271921ac9eae915c2d3f9d72cdcecbd7138cfa7:0"}
+# cell-5 = {ref = "cell:v1:324c6ff86dc9c1a46cb43e31f7fba83e640eda0672dfb807925ade128d3b2c97:e49b954441225b13102574c8608166bccb40996b0a1042580d54ef08d0b68f7f:0"}
+# cell-6 = {ref = "cell:v1:ed0ee369cae41da4583f5816b2df8537647e42be818e39ddc6431ea1414269e3:a2da898bb0cdde40171784a16c68c64e2a7ae4553142378834dce925295fb49d:0"}
+# cell-8 = {ref = "cell:v1:b379fd0661975e73e57b5b67b99285e2dfd9dda4a019ffa89087bdc0d6b9f066:c9ca9e8f7c56b8aae5ab065870159bd7357bd8e4537308f7a49f093fab7b6c43:0"}
+# cell-9 = {ref = "cell:v1:100baca44ee61bf8844e4dc76e570b59b5f57ad6274b531573aa3cb3c0a3d72b:100baca44ee61bf8844e4dc76e570b59b5f57ad6274b531573aa3cb3c0a3d72b:0"}
+# cell-10 = {ref = "cell:v1:79c20fbaf0f09a77aea88482cd4f87adab59493831fb0feb873afc59696f9173:79c20fbaf0f09a77aea88482cd4f87adab59493831fb0feb873afc59696f9173:0"}
+# cell-11 = {ref = "cell:v1:618988fca7572adb582c0f99dd84c94f7fbc5190f58383d5e079adaadc697cb6:61979a9f73c8c5ffc98f2e1dda0f7a60e3e101ef0bd78f86b4627b0abd02eff8:0"}
+# cell-12 = {ref = "cell:v1:8bc1a5724b13f36278eb1d2d328ebd9dfe6e5d2908a1b742630bacf4200f0683:8bc1a5724b13f36278eb1d2d328ebd9dfe6e5d2908a1b742630bacf4200f0683:0"}
+# cell-13 = {ref = "cell:v1:47ea40ffeded1082240916889eb3988c4676f2a1b23201ce115249c5fec65633:47ea40ffeded1082240916889eb3988c4676f2a1b23201ce115249c5fec65633:0"}
+# cell-14 = {ref = "cell:v1:54b1a5df0e5dc107de2a158164faa78308402e0f195311ce555e5147189db317:20559bbd1f78393a600295748226537ccf426b1c1d6abfb256cb95b23946690d:0"}
 # ///
 
 import marimo
