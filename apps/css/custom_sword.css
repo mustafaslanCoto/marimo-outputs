@@ -1,8 +1,8 @@
 /* ==========================================
    1. VIEWPORT & MAIN PRESENTATION BACKGROUND
    ========================================== */
-.reveal-viewport, 
-.reveal, 
+.reveal-viewport,
+.reveal,
 .reveal .slides section {
   background-color: #FBFAF4 !important;
 }
@@ -14,7 +14,7 @@
 /* ==========================================
    2. HEADINGS & TYPOGRAPHY
    ========================================== */
-.reveal h1, 
+.reveal h1,
 .reveal h1.title {
   color: #091717 !important;
   font-size: 1.8em !important;
@@ -85,25 +85,46 @@
   text-decoration: none;
 }
 
-.reveal a:hover, 
+.reveal a:hover,
 .reveal a.quarto-xref:hover,
 .reveal a.no-external:hover {
-  color: #92DCE2 !important; 
+  color: #92DCE2 !important;
   text-decoration: underline;
 }
 
+.reveal .mo-slide-content .output {
+  position: static !important;
+}
+
 .reveal .footer {
+  display: block;
+  position: absolute;
+  bottom: calc((10px - (var(--viewport-height, 100%) - var(--slide-height, 100%) * var(--slide-scale, 1)) / 2) / var(--slide-scale, 1)) !important;
+  left: 0;
+  right: 0;
+  width: 100%;
+  margin: 0 auto;
+  text-align: center;
+  font-size: 16px;
+  font-weight: 450;
+  line-height: 1.2;
+  z-index: 60;
   color: #20808D !important;
+  pointer-events: none;
 }
 
 .reveal .footer a {
   color: #20808D !important;
+  font-weight: inherit !important;
   text-decoration: none;
+  pointer-events: auto;
+  cursor: pointer;
 }
 
 .reveal .footer a:hover,
 .reveal .footer a:focus {
   color: #16606A !important;
+  text-decoration: underline;
 }
 
 /* ==========================================
@@ -138,7 +159,7 @@ div.callout .callout-title,
 }
 
 .left-border {
-  border-left: 2px solid rgba(0,0,0,0.12) !important;
+  border-left: 2px solid rgba(0, 0, 0, 0.12) !important;
   border-radius: 0 !important;
   border-top: none !important;
   border-right: none !important;
@@ -271,11 +292,11 @@ div.callout .callout-title,
   counter-reset: slide-number;
 }
 
-.reveal .slides > section {
+.reveal .slides>section {
   counter-increment: slide-number;
 }
 
-.reveal .slides > section.present::after {
+.reveal .slides>section.present::after {
   content: counter(slide-number);
   position: absolute;
   right: 18px;
