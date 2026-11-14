@@ -20,6 +20,7 @@ The exported files will be placed in the specified output directory (default: _s
 # ]
 # ///
 
+import re
 import subprocess
 from typing import List, Union
 from pathlib import Path
@@ -83,7 +84,78 @@ def _export_html_wasm(notebook_path: Path, output_dir: Path, as_app: bool = Fals
         return False
 
 
-def _generate_index(output_dir: Path, template_file: Path, notebooks_data: List[dict] | None = None, apps_data: List[dict] | None = None) -> None:
+def _format_display_name(raw_name: str) -> str:
+    """Strip optional numeric prefix (e.g. '01_') and title-case the name."""
+    cleaned = re.sub(r"^\d+_", "", raw_name)
+    return cleaned.replace("_", " ").title()
+
+
+def _export_tutorials(
+    tutorials_root: Path,
+    output_dir: Path,
+    area_template_file: Path,
+) -> List[dict]:
+    """Export topic subfolders under tutorials/ in App Mode and build an index page per area."""
+    if not tutorials_root.exists():
+        logger.warning(f"Directory not found: {tutorials_root}")
+        return []
+
+    areas = sorted([p for p in tutorials_root.iterdir() if p.is_dir() and not p.name.startswith((".", "_"))])
+    if not areas:
+        logger.warning(f"No tutorial area folders found in {tutorials_root}")
+        return []
+
+    template_dir = area_template_file.parent
+    template_name = area_template_file.name
+    env = jinja2.Environment(
+        loader=jinja2.FileSystemLoader(template_dir),
+        autoescape=jinja2.select_autoescape(["html", "xml"]),
+    )
+    area_template = env.get_template(template_name)
+
+    areas_data: List[dict] = []
+    for area_dir in areas:
+        notebooks = sorted(area_dir.rglob("*.py"))
+        if not notebooks:
+            continue
+
+        exported_items: List[dict] = []
+        for nb in notebooks:
+            if _export_html_wasm(nb, output_dir, as_app=True):
+                rel_to_area = nb.relative_to(area_dir).with_suffix(".html")
+                exported_items.append({
+                    "display_name": nb.stem.replace("_", " ").title(),
+                    "html_filename": str(rel_to_area),
+                })
+
+        if not exported_items:
+            continue
+
+        area_info = {
+            "display_name": _format_display_name(area_dir.name),
+            "slug": area_dir.name,
+            "index_path": f"{tutorials_root.name}/{area_dir.name}/index.html",
+            "count": len(exported_items),
+            "tutorials": exported_items,
+        }
+
+        area_index_path = output_dir / tutorials_root.name / area_dir.name / "index.html"
+        area_index_path.parent.mkdir(parents=True, exist_ok=True)
+        area_index_path.write_text(area_template.render(area=area_info), encoding="utf-8")
+        logger.info(f"Generated area subpage: {area_index_path}")
+        areas_data.append(area_info)
+
+    return areas_data
+
+
+def _generate_index(
+    output_dir: Path,
+    template_file: Path,
+    notebooks_data: List[dict] | None = None,
+    apps_data: List[dict] | None = None,
+    tutorial_areas: List[dict] | None = None,
+    tutorial_notebooks: List[dict] | None = None,
+) -> None:
     """Generate an index.html file that lists all the notebooks.
 
     This function creates an HTML index page that displays links to all the exported
@@ -117,8 +189,13 @@ def _generate_index(output_dir: Path, template_file: Path, notebooks_data: List[
         )
         template = env.get_template(template_name)
 
-        # Render the template with notebook and app data
-        rendered_html = template.render(notebooks=notebooks_data, apps=apps_data)
+        # Render the template with notebook, app, and tutorial data
+        rendered_html = template.render(
+            notebooks=notebooks_data,
+            apps=apps_data,
+            tutorial_areas=tutorial_areas,
+            tutorial_notebooks=tutorial_notebooks,
+        )
 
         # Write the rendered HTML to the index.html file
         with open(index_path, "w") as f:
@@ -212,13 +289,27 @@ def main(
     # Export apps from the apps/ directory
     apps_data = _export(Path("apps"), output_dir, as_app=True)
 
-    # Exit if no notebooks or apps were found
-    if not notebooks_data and not apps_data:
-        logger.warning("No notebooks or apps found!")
+    # Export tutorials/<area>/ in App Mode and build area subpages
+    area_template_file = template_file.parent / "tutorial_area.html.j2"
+    tutorial_areas = _export_tutorials(Path("tutorials"), output_dir, area_template_file)
+
+    # Export flat editable tutorial notebooks from tutorial_notebooks/ in Edit Mode
+    tutorial_notebooks = _export(Path("tutorial_notebooks"), output_dir, as_app=False)
+
+    # Exit if nothing was found
+    if not notebooks_data and not apps_data and not tutorial_areas and not tutorial_notebooks:
+        logger.warning("No notebooks, apps, or tutorials found!")
         return
 
-    # Generate the index.html file that lists all notebooks and apps
-    _generate_index(output_dir=output_dir, notebooks_data=notebooks_data, apps_data=apps_data, template_file=template_file)
+    # Generate the index.html file that lists all notebooks, apps, and tutorials
+    _generate_index(
+        output_dir=output_dir,
+        notebooks_data=notebooks_data,
+        apps_data=apps_data,
+        tutorial_areas=tutorial_areas,
+        tutorial_notebooks=tutorial_notebooks,
+        template_file=template_file,
+    )
 
     logger.info(f"Build completed successfully. Output directory: {output_dir}")
 

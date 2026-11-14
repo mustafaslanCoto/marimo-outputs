@@ -455,12 +455,69 @@
       </div>
       <div class="filter-tabs">
         <button class="tab-btn active" data-filter="all">All</button>
+        <button class="tab-btn" data-filter="tutorial">Tutorials</button>
         <button class="tab-btn" data-filter="notebook">Notebooks</button>
-        <button class="tab-btn" data-filter="app">Apps & Slides</button>
+        <button class="tab-btn" data-filter="app">Apps &amp; Slides</button>
       </div>
     </div>
 
     <main>
+      {% if tutorial_areas or tutorial_notebooks %}
+      <!-- Tutorials Section -->
+      <section class="section-block" id="tutorials-section">
+        {% if tutorial_areas %}
+        <div class="section-header">
+          <h2 class="section-title">Tutorial Areas</h2>
+          <span class="section-badge badge-run">App Mode</span>
+        </div>
+        <p class="section-description">Select a subject area to browse interactive tutorial notebooks in clean app mode.</p>
+
+        <div class="cards-grid" style="margin-bottom: 32px;">
+          {% for area in tutorial_areas %}
+          <div class="quarto-grid-item card item-card" data-type="tutorial" data-subtype="tutorial-area" data-title="{{ area.display_name | lower }}">
+            <div class="card-header-bar">
+              <span class="card-title">{{ area.display_name }}</span>
+              <span class="card-type-tag">{{ area.count }} {{ 'Module' if area.count == 1 else 'Modules' }}</span>
+            </div>
+            <div class="card-body">
+              <p class="card-text">Interactive {{ area.display_name }} tutorials in presentation / app mode.</p>
+              <a href="{{ area.index_path }}" class="btn-filled-primary">
+                <svg width="14" height="14" viewBox="0 0 24 24"><path d="M8 5v14l11-7z"/></svg>
+                Explore Area
+              </a>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+
+        {% if tutorial_notebooks %}
+        <div class="section-header">
+          <h2 class="section-title">Tutorial Notebooks</h2>
+          <span class="section-badge badge-edit">Edit Mode</span>
+        </div>
+        <p class="section-description">Editable tutorial notebooks for students — modify code, run experiments, and test formulations directly in your browser.</p>
+
+        <div class="cards-grid">
+          {% for tnb in tutorial_notebooks %}
+          <div class="quarto-grid-item card item-card" data-type="tutorial" data-subtype="tutorial-notebook" data-title="{{ tnb.display_name | lower }}">
+            <div class="card-header-bar">
+              <span class="card-title">{{ tnb.display_name }}</span>
+              <span class="card-type-tag">Student Edit</span>
+            </div>
+            <div class="card-body">
+              <p class="card-text">Editable WebAssembly Python notebook for hands-on practice.</p>
+              <a href="{{ tnb.html_path }}" class="btn-outline-primary">
+                <svg width="14" height="14" viewBox="0 0 24 24"><path d="M19 19H5V5h7V3H5c-1.11 0-2 .9-2 2v14c0 1.1.89 2 2 2h14c1.1 0 2-.9 2-2v-7h-2v7zM14 3v2h3.59l-9.83 9.83 1.41 1.41L19 6.41V10h2V3h-7z"/></svg>
+                Open Notebook
+              </a>
+            </div>
+          </div>
+          {% endfor %}
+        </div>
+        {% endif %}
+      </section>
+      {% endif %}
       {% if notebooks %}
       <!-- Notebooks Section -->
       <section class="section-block" id="notebooks-section">
@@ -544,6 +601,7 @@
       const itemCards = document.querySelectorAll('.item-card');
       const notebooksSection = document.getElementById('notebooks-section');
       const appsSection = document.getElementById('apps-section');
+      const tutorialsSection = document.getElementById('tutorials-section');
       const emptyState = document.getElementById('empty-state');
 
       let currentFilter = 'all';
@@ -553,6 +611,7 @@
         let visibleCount = 0;
         let visibleNotebooks = 0;
         let visibleApps = 0;
+        let visibleTutorials = 0;
 
         itemCards.forEach(card => {
           const type = card.getAttribute('data-type');
@@ -566,11 +625,15 @@
             visibleCount++;
             if (type === 'notebook') visibleNotebooks++;
             if (type === 'app') visibleApps++;
+            if (type === 'tutorial') visibleTutorials++;
           } else {
             card.style.display = 'none';
           }
         });
 
+        if (tutorialsSection) {
+          tutorialsSection.style.display = visibleTutorials > 0 ? 'block' : 'none';
+        }
         if (notebooksSection) {
           notebooksSection.style.display = visibleNotebooks > 0 ? 'block' : 'none';
         }
