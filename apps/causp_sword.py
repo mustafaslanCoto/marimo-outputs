@@ -3,11 +3,22 @@
 # dependencies = [
 #     "altair==6.3.0",
 #     "marimo>=0.23.3",
+#     "marimo-lens>=0.2.3",
 #     "mcp==2.0.0",
+#     "nbformat==5.11.1",
 #     "numpy",
+#     "openai==3.51.0",
 #     "pandas",
 #     "plotly==6.7.0",
+#     "polars==2.1.0",
 #     "pyarrow",
+#     "pytest==9.2.0",
+#     "python-lsp-ruff==2.3.4",
+#     "python-lsp-server==1.15.0",
+#     "ruff==0.17.5",
+#     "vegafusion==2.0.3",
+#     "vl-convert-python==1.9.0.post1",
+#     "websockets==17.4",
 # ]
 # ///
 
@@ -31,35 +42,94 @@ def _():
 
 
 @app.cell(hide_code=True)
-def _(mo):
-    import re
+def _():
+    # import re
+    # import sys
+
+    # _RAW = "https://raw.githubusercontent.com/mustafaslanCoto/marimo-outputs/main/apps/html"
+
+    # if sys.platform == "emscripten":
+    #     from pyodide.http import open_url
+
+    #     _html = open_url(f"{_RAW}/title-sword.html").read()
+    # else:
+    #     import urllib.request
+
+    #     _html = urllib.request.urlopen(f"{_RAW}/title-sword.html").read().decode("utf-8") # for local testing
+
+    # _src = lambda m: f'src="{_RAW}/{m.group(1)}"'
+
+    # # drop Quarto's ```{=html} fences; logos live in talks/images
+    # _html = re.sub(r"^```.*$", "", _html, flags=re.M)
+    # _html = re.sub(r'src="(images/[^"]+)"', _src, _html)
+    # # scale with the slide width (Quarto reveal does this via its 1920x1080 canvas)
+    # _scale = """<style>
+    #   .ts-wrap { container-type: inline-size; width: 100%; overflow: hidden; }
+    #   .ts-wrap .title-slide-custom { font-size: 2.1cqw; }
+    #   .ts-wrap .title-slide-custom .logo-bar { margin-bottom: 4cqw; }
+    #   .ts-wrap .title-slide-custom .logo-bar img { height: 6cqw !important; width: auto !important; max-width: none; }
+    # </style>"""
+    # mo.Html(f'{_scale}<div class="ts-wrap">{_html}</div>')
+    return
+
+
+@app.cell
+def native_title_sample(mo):
+    # Title Slide — logos read at runtime and embedded as data URIs
+    import base64
+    import pathlib
     import sys
 
-    _RAW = "https://raw.githubusercontent.com/mustafaslanCoto/marimo-outputs/main/apps/html"
+    img_dir = mo.notebook_location() / "images"
 
-    if sys.platform == "emscripten":
-        from pyodide.http import open_url
+    def img_uri(name):
+        """Logo source that works locally and under WASM (e.g. GitHub Pages).
 
-        _html = open_url(f"{_RAW}/title-sword.html").read()
-    else:
-        import urllib.request
+        - WASM: `_img` is a URL (mo.notebook_location() returns the page URL),
+          so hand the browser the URL directly - GitHub Pages serves images/.
+        - Local: the browser cannot read filesystem paths, so embed the bytes
+          as an inline data URI.
+        """
+        src = img_dir / name
+        if sys.platform == "emscripten":
+            return str(src)
+        return "data:image/png;base64," + base64.b64encode(pathlib.Path(src).read_bytes()).decode()
 
-        _html = urllib.request.urlopen(f"{_RAW}/title-sword.html").read().decode("utf-8") # for local testing
+    mo.md(f"""
+    <div style="text-align: center; font-family: system-ui, -apple-system, sans-serif; padding: 2.5rem 2rem; background: #FAF8F5; border-radius: 12px; box-shadow: 0 4px 20px rgba(0,0,0,0.06); max-width: 1200px; margin: 0 auto;">
+      <div style="display: flex; justify-content: space-between; align-items: center; width: 100%; margin-bottom: 2.5rem;">
+        <div style="display: flex; align-items: center; gap: 1.5rem;">
+          <img src="{img_uri('cu.png')}" style="height: 90px; width: auto; object-fit: contain;" alt="Cardiff University">
+          <img src="{img_uri('wgsss.png')}" style="height: 90px; width: auto; object-fit: contain;" alt="WGSSS">
+          <img src="{img_uri('hcrw_back.png')}" style="height: 90px; width: auto; object-fit: contain;" alt="Health and Care Research Wales">
+        </div>
+        <div style="display: flex; align-items: center; gap: 1.5rem;">
+          <img src="{img_uri('dlsg.png')}" style="height: 90px; width: auto; object-fit: contain;" alt="Data Lab for Social Good">
+          <img src="{img_uri('care.png')}" style="height: 90px; width: auto; object-fit: contain;" alt="CARE">
+        </div>
+      </div>
 
-    _src = lambda m: f'src="{_RAW}/{m.group(1)}"'
+      <h1 style="font-size: 2.1rem; font-weight: 800; line-height: 1.25; color: #091717; margin: 0 auto 0.75rem auto; max-width: 90%; text-align: center;">
+        From Causal Impacts of Diagnosis on Length of Stay to Reclaimed Hospital Bed Capacity
+      </h1>
 
-    # drop Quarto's ```{=html} fences; logos live in talks/images
-    _html = re.sub(r"^```.*$", "", _html, flags=re.M)
-    _html = re.sub(r'src="(images/[^"]+)"', _src, _html)
-    # scale with the slide width (Quarto reveal does this via its 1920x1080 canvas)
-    _scale = """<style>
-      .ts-wrap { container-type: inline-size; width: 100%; overflow: hidden; }
-      .ts-wrap .title-slide-custom { font-size: 2.1cqw; }
-      .ts-wrap .title-slide-custom .logo-bar { margin-bottom: 4cqw; }
-      .ts-wrap .title-slide-custom .logo-bar img { height: 6cqw !important; width: auto !important; max-width: none; }
-    </style>"""
-    mo.Html(f'{_scale}<div class="ts-wrap">{_html}</div>')
-    return (re,)
+      <h2 style="font-size: 1.3rem; font-weight: 600; color: #334155; margin: 0 auto 1.5rem auto;">A Causal Machine Learning Framework</h2>
+
+      <div style="font-size: 0.95rem; font-weight: 700; letter-spacing: 0.15em; text-transform: uppercase; color: #20808D;">SWORDS 2026</div>
+      <hr style="width: 80px; height: 4px; background: #20808D; border: none; margin: 0.6rem auto 1.2rem auto; border-radius: 2px;">
+
+      <div style="font-weight: 700; font-size: 1.05rem; color: #091717;">Mustafa Aslan</div>
+      <div style="font-weight: 600; font-size: 0.95rem; color: #64748B; margin-top: 0.25rem;">Data Lab for Social Good, Cardiff University, UK</div>
+
+      <div style="font-weight: 600; font-size: 0.9rem; color: #334155; margin-top: 1.0rem; line-height: 1.5;">
+        <span style="color: #64748B;">Lead supervisor:</span> Prof. Bahman Rostami-Tabar<br>
+        <span style="color: #64748B;">Co-supervisor:</span> Dr. Jeremy Dixon
+      </div>
+
+      <div style="font-size: 0.9rem; color: #64748B; margin-top: 1.2rem;">13 October 2026</div>
+    </div>
+    """)
+    return (img_uri,)
 
 
 @app.cell(hide_code=True)
@@ -109,7 +179,8 @@ def _(outline):
 
 
 @app.cell(hide_code=True)
-def _(mo, re):
+def _(mo):
+    import re
     def fragment_md(markdown):
         markdown = re.sub(
             r"(?m)^- (.+)$",
@@ -236,36 +307,19 @@ def _(mo):
 
 
 @app.cell
-def _():
-    import io as _io
-    from urllib.request import urlopen as _urlopen
-
+def _(mo):
+    import polars as pl
     import pandas as pd
     import numpy as np
-    # import seaborn as sns
 
-    def fetch(url):
-        """Fetch remote data into memory before passing it to pandas.
+    data_url = mo.notebook_location() / "public"
 
-        Passing an in-memory buffer avoids pandas handling the compressed HTTP
-        response itself in the browser.
-        """
-        with _urlopen(url) as response:
-            return _io.BytesIO(response.read())
-
-
-    data_url = (
-        "https://raw.githubusercontent.com/"
-        "mustafaslanCoto/marimo-outputs/main/"
-        "apps/public"
-    )
-    order_df = pd.read_csv(fetch(f"{data_url}/diagnosis_order.csv"))
-    diags = pd.read_csv(fetch(f"{data_url}/caus_hrg_lgb.csv"))
+    order_df = pl.read_csv(str(data_url / "diagnosis_order.csv")).to_pandas()
+    diags = pl.read_csv(str(data_url / "caus_hrg_lgb.csv")).to_pandas()
     diags = diags.merge(order_df, on='profile', how ='left')
     diags.rename(columns={"proportion": "dominance"}, inplace=True)
     diags.sort_values("dominance", ascending=False, inplace=True)
-    # diags["dominance"] = diags["dominance"]*100
-    cleand_df = pd.read_parquet(fetch(f"{data_url}/clean_df_present.parquet"))
+    cleand_df = pl.read_parquet(str(data_url / "clean_df_present.parquet")).to_pandas()
     exist_codes = cleand_df[cleand_df["code"]!= "$$X"]["code"].drop_duplicates().tolist()
 
     diags = diags.drop(columns=["variance"])
@@ -279,8 +333,8 @@ def _():
     # sort by it
     diags = diags.sort_values("profile").reset_index(drop=True)
 
-    confounders = pd.read_csv(fetch(f"{data_url}/confounders.csv"))
-    return cleand_df, confounders, data_url, diags, exist_codes, fetch, np, pd
+    confounders = pl.read_csv(str(data_url / "confounders.csv")).to_pandas()
+    return cleand_df, confounders, data_url, diags, exist_codes, np, pd, pl
 
 
 @app.cell
@@ -290,8 +344,8 @@ def _(diags):
 
 
 @app.cell
-def _(data_url, exist_codes, fetch, pd):
-    hrg = pd.read_csv(fetch(f"{data_url}/nhs_group.csv"))[["code", "HRG 1","Code Description"]].drop_duplicates().rename(columns={"code":"ICD_code", "HRG 1": "HRG", "Code Description": "ICD_description"})
+def _(data_url, exist_codes, pl):
+    hrg = pl.read_csv(str(data_url / "nhs_group.csv")).select(["code", "HRG 1", "Code Description"]).unique().rename({"code": "ICD_code", "HRG 1": "HRG", "Code Description": "ICD_description"}).to_pandas()
     ## filter ICD
     hrg = hrg[hrg["ICD_code"].isin(exist_codes)]
     hrg["HRG2"] = hrg["HRG"].str[:2]
@@ -1241,18 +1295,17 @@ def _():
 
 
 @app.cell(hide_code=True)
-def _(mo):
-    _src = "https://raw.githubusercontent.com/mustafaslanCoto/mustafaslanCoto.github.io/main/talks/images/follow_us.png"
+def _(img_uri, mo):
+    # Closing slide — follow_us logo loaded consistently with the title slide
 
     _text = mo.md("# Any questions or thoughts? 💬")
-    # _text = mo.vstack([_thanks], align="center")
     _image = mo.Html(
         '<div style="container-type:inline-size;width:100%">'
-        f'<img src="{_src}" style="display:block;margin:0 auto;max-height:55vh;max-width:100%">'
+        f'<img src="{img_uri("follow_us.png")}" style="display:block;margin:0 auto;max-height:55vh;max-width:100%">'
         '</div>'
     )
 
-    mo.vstack([_text, _image], align = "center")
+    mo.vstack([_text, _image], align="center")
     return
 
 
