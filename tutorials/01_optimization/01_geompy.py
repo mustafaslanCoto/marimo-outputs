@@ -1,10 +1,23 @@
 # /// script
 # dependencies = [
+#     "altair==6.3.0",
 #     "marimo",
+#     "marimo-lens>=0.2.3",
 #     "matplotlib",
+#     "mcp>=2.0.0",
+#     "nbformat==5.11.1",
 #     "numpy",
+#     "openai==3.51.0",
+#     "pandas==3.1.1",
 #     "polars",
+#     "pytest==9.2.0",
+#     "python-lsp-ruff==2.3.4",
+#     "python-lsp-server==1.15.0",
+#     "ruff==0.17.5",
 #     "scipy",
+#     "vegafusion==2.0.3",
+#     "vl-convert-python==1.9.0.post1",
+#     "websockets==17.4",
 # ]
 # requires-python = ">=3.12"
 # ///
@@ -12,7 +25,7 @@
 import marimo
 
 __generated_with = "0.25.2"
-app = marimo.App(width="full")
+app = marimo.App(width="medium")
 
 
 @app.cell
@@ -22,23 +35,29 @@ def imports():
     from scipy.optimize import linprog
     import matplotlib.pyplot as plt
     import polars as pl
-
+    import pandas as pd
 
     return linprog, mo, np, pl, plt
 
 
 @app.cell(hide_code=True)
-def header_intro(mo):
+def _(mo):
+    mo.outline(label="Table of Contents")
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
     mo.md(r"""
     # Module 01: The Geometry of Linear Programming
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def header_intro(mo):
+    mo.md(r"""
     ### *From Hyperplanes and Polyhedra to Basic Feasible Solutions, Degeneracy, and the Fundamental Theorem of LP*
-
-    ---
-
-    > **Primary Textbook Sources:**
-    > - **Bertsimas, D., & Tsitsiklis, J. N.** — *Introduction to Linear Optimization*, **Chapter 2: The Geometry of Linear Programming** (§2.1–§2.7, pp. 41–70).
-    > - **Dantzig, G. B.** — *Linear Programming and Extensions*, **Chapter 7: The Geometry of Linear Programs** (§7-1–§7-3, pp. 147–166).
-    > - **Boyd, S., & Vandenberghe, L.** — *Convex Optimization*, **Chapter 2: Convex Sets** (§2.1–§2.4, for supporting hyperplane and affine/convex hull clarity).
 
     ---
 
@@ -46,13 +65,18 @@ def header_intro(mo):
 
     Why can an optimization problem with **continuous variables** (infinitely many feasible points) be solved in a **finite number of steps** by checking only "corner points"? And how does a computer—which cannot "see" a 10,000-dimensional geometric corner—recognize a corner using only matrix algebra (`Ax = b`)?
 
+    > **Quick Intuition — What is a *Feasible Point*?**
+    > A **feasible point** is any assignment of values to the decision variables $x \in \mathbb{R}^n$ that satisfies **every** constraint of the optimization problem simultaneously (such as $Ax \ge b$, or $Ax = b$ with $x \ge 0$). The set of all feasible points together forms the **feasible region** (our polyhedron $P$).
+
     The entire power of Linear Programming rests on a **three-way bridge** between:
+
     1. **Geometry (Convex Analysis):** *Polyhedra*, *Extreme Points* (points that cannot be written as strict midpoints/averages of two other feasible points), and *Vertices* (unique minimizers of some linear cost).
     2. **Linear Algebra (Simplex Mechanics):** *Basic Feasible Solutions (BFS)*—points where $n$ linearly independent constraints are active (tight) simultaneously, or equivalently where $m$ linearly independent columns $B = [A_{B(1)} \cdots A_{B(m)}]$ synthesize the right-hand side $b$ via $x_B = B^{-1}b \ge 0$.
-    3. **Optimization Theory:** Even when a polyhedron contains uncountably many points, if an optimal solution exists and the polyhedron contains no infinite lines, **at least one optimal solution is guaranteed to sit at an extreme point (BFS)**.
+    3. **Optimization Theory:** Even when a polyhedron contains uncountably many points, if an optimal solution exists and the polyhedron contains no infinite lines, **at least one optimal solution is guaranteed to sit at an extreme point (BFS)**—meaning it is a *mathematical certainty* (never a heuristic or lucky accident) that an algorithm searching only corners will never miss the global optimum.
 
     Every section below follows our **Four-Pillar Pedagogical Structure**:
-    1. **Formal Theory & Proofs** (exact definitions and theorems from Bertsimas & Tsitsiklis and Dantzig)
+
+    1. **Formal Theory & Proofs** (exact definitions, theorems, and proofs)
     2. **Plain-English Deconstruction & Notation Lexicon** (translating every symbol, transpose, and condition into clear English)
     3. **Worked Analytical Example** (hand-worked step-by-step calculation)
     4. **Interactive Python & `scipy.optimize.linprog` (HiGHS) Laboratory** (executable code and visual intuition)
@@ -61,59 +85,95 @@ def header_intro(mo):
 
 
 @app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 1. Polyhedra and Convex Sets
+    """)
+    return
+
+
+@app.cell(hide_code=True)
 def sec1_theory(mo):
     mo.md(r"""
-    ---
-    ## 1. Polyhedra and Convex Sets
-    *Sources: Bertsimas & Tsitsiklis §2.1 (pp. 42–46); Dantzig §7-1 (pp. 147–153); Boyd & Vandenberghe §2.1–2.2*
-
     ### 1.1 Formal Theory & Mathematical Definitions
 
     In Linear Programming, we optimize a linear objective over a feasible region defined by linear equality and inequality constraints. Geometrically, what kind of object does a system of linear inequalities carve out of $\mathbb{R}^n$?
 
-    #### **Definition 2.1 (Polyhedron)** *(B&T p. 42; Dantzig p. 151)*
+    #### **Definition 2.1 (Polyhedron)**
     A **polyhedron** is a subset $P \subseteq \mathbb{R}^n$ described by a finite number of linear inequalities:
-    $$P = \{x \in \mathbb{R}^n \mid Ax \ge b\}$$
+
+    $$
+    P = \{x \in \mathbb{R}^n \mid Ax \ge b\}
+    $$
+
     where $A \in \mathbb{R}^{m \times n}$ is an $m \times n$ matrix and $b \in \mathbb{R}^m$ is an $m$-dimensional vector.
 
     > **Why all LP feasible sets fit this definition:** Any equality constraint $a_i'x = b_i$ can be written as two opposing inequalities ($a_i'x \ge b_i$ and $-a_i'x \ge -b_i$), and any $\le$ constraint $a_i'x \le b_i$ can be multiplied by $-1$ to become $-a_i'x \ge -b_i$. Thus, **every linear programming feasible set is a polyhedron**. In particular, $P = \{x \in \mathbb{R}^n \mid Ax = b,\, x \ge 0\}$ is called a **polyhedron in standard form**.
 
-    #### **Definition 2.2 (Bounded Set / Polytope)** *(B&T p. 43)*
+    #### **Definition 2.2 (Bounded Set / Polytope)**
     A set $S \subseteq \mathbb{R}^n$ is **bounded** if there exists a constant $K > 0$ such that the absolute value of every component of every $x \in S$ satisfies $|x_j| \le K$ for all $j = 1, \dots, n$ (equivalently, $\|x\|_\infty \le K$). A bounded polyhedron is often called a **polytope**.
 
-    #### **Definition 2.3 (Hyperplane and Halfspace)** *(B&T p. 43; Dantzig p. 151)*
+    #### **Definition 2.3 (Hyperplane and Halfspace)**
     Let $a \in \mathbb{R}^n$ be a **nonzero** vector ($a \ne 0$) and let $b \in \mathbb{R}$ be a scalar.
+
     1. **Hyperplane:** $H = \{x \in \mathbb{R}^n \mid a'x = b\}$
     2. **Closed Halfspace:** $H^+ = \{x \in \mathbb{R}^n \mid a'x \ge b\}$ (or $H^- = \{x \in \mathbb{R}^n \mid a'x \le b\}$)
 
     * **Geometric Orthogonality of $a$:** Why is the coefficient vector $a$ always **perpendicular (normal)** to the hyperplane $H$? Take any two points $x, y \in H$. Then $a'x = b$ and $a'y = b$. Subtracting the two gives:
-      $$a'(x - y) = 0$$
-      Since $x - y$ is any direction vector lying flat inside the hyperplane $H$, the vector $a$ is orthogonal to the hyperplane and points in the direction where $a'x$ increases ($a'x > b$).
-    * **Polyhedron as an Intersection of Halfspaces:** If $a_1', \dots, a_m'$ denote the $m$ rows of $A$, then:
-      $$P = \{x \in \mathbb{R}^n \mid Ax \ge b\} = \bigcap_{i=1}^m \{x \in \mathbb{R}^n \mid a_i'x \ge b_i\}$$
-      Each single constraint slices $\mathbb{R}^n$ with a flat hyperplane and keeps one side (a halfspace). A polyhedron is simply what remains after making $m$ flat planar cuts.
 
-    #### **Definition 2.4 & 2.5 (Convex Set, Convex Combination, and Convex Hull)** *(B&T pp. 43–44; Dantzig p. 149)*
+    $$
+    a'(x - y) = 0
+    $$
+
+    Since $x - y$ is any direction vector lying flat inside the hyperplane $H$, the vector $a$ is orthogonal to the hyperplane and points in the direction where $a'x$ increases ($a'x > b$).
+
+    * **Polyhedron as an Intersection of Halfspaces:** If $a_1', \dots, a_m'$ denote the $m$ rows of $A$, then:
+
+    $$
+    P = \{x \in \mathbb{R}^n \mid Ax \ge b\} = \bigcap_{i=1}^m \{x \in \mathbb{R}^n \mid a_i'x \ge b_i\}
+    $$
+
+    Each single constraint slices $\mathbb{R}^n$ with a flat hyperplane and keeps one side (a halfspace). A polyhedron is simply what remains after making $m$ flat planar cuts.
+
+    #### **Definition 2.4 & 2.5 (Convex Set, Convex Combination, and Convex Hull)**
     * **Convex Set:** A set $S \subseteq \mathbb{R}^n$ is **convex** if for any two points $x, y \in S$ and any scalar $\lambda \in [0, 1]$:
-      $$\lambda x + (1 - \lambda)y \in S$$
-      Geometrically, the entire straight line segment connecting $x$ and $y$ stays inside $S$.
+
+    $$
+    \lambda x + (1 - \lambda)y \in S
+    $$
+
+    Geometrically, the entire straight line segment connecting $x$ and $y$ stays inside $S$.
+
     * **Convex Combination:** Given $k$ vectors $x^1, \dots, x^k \in \mathbb{R}^n$ and scalars $\lambda_1, \dots, \lambda_k \ge 0$ such that $\sum_{i=1}^k \lambda_i = 1$, the weighted average
-      $$x = \sum_{i=1}^k \lambda_i x^i$$
-      is called a **convex combination** of $x^1, \dots, x^k$.
+
+    $$
+    x = \sum_{i=1}^k \lambda_i x^i
+    $$
+
+    is called a **convex combination** of $x^1, \dots, x^k$.
+
     * **Convex Hull:** The **convex hull** $\operatorname{conv}(\{x^1, \dots, x^k\})$ is the set of all convex combinations of $x^1, \dots, x^k$ (physically: if you hammer nails at $x^1, \dots, x^k$ and stretch a rubber band around them, the region enclosed is the convex hull).
 
-    #### **Theorem 2.1 (Fundamental Properties of Convexity)** *(B&T p. 44; Dantzig §7-1 Theorems 1 & 2)*
+    #### **Theorem 2.1 (Fundamental Properties of Convexity)**
     1. **(a)** The intersection $\bigcap_{i \in I} S_i$ of any collection of convex sets is convex.
     2. **(b)** **Every polyhedron is a convex set.**
-       * *Proof:* Take a single halfspace $H_i = \{x \mid a_i'x \ge b_i\}$. If $x, y \in H_i$ and $\lambda \in [0, 1]$, then since $\lambda \ge 0$ and $1-\lambda \ge 0$:
-         $$a_i'(\lambda x + (1-\lambda)y) = \lambda (a_i'x) + (1-\lambda)(a_i'y) \ge \lambda b_i + (1-\lambda)b_i = b_i$$
-         So every halfspace is convex. Since a polyhedron $P = \bigcap_{i=1}^m H_i$ is the intersection of $m$ halfspaces, part (a) guarantees $P$ is convex. $\blacksquare$
+
+    *Proof of (b):* Take a single halfspace $H_i = \{x \mid a_i'x \ge b_i\}$. If $x, y \in H_i$ and $\lambda \in [0, 1]$, then since $\lambda \ge 0$ and $1-\lambda \ge 0$:
+
+    $$
+    a_i'(\lambda x + (1-\lambda)y) = \lambda (a_i'x) + (1-\lambda)(a_i'y) \ge \lambda b_i + (1-\lambda)b_i = b_i
+    $$
+
+    So every halfspace is convex. Since a polyhedron $P = \bigcap_{i=1}^m H_i$ is the intersection of $m$ halfspaces, part (a) guarantees $P$ is convex. $\blacksquare$
+
     3. **(c)** A convex combination of a finite number of elements of a convex set also belongs to that set (by induction on $k$).
     4. **(d)** The convex hull of a finite number of vectors is a convex set.
 
-    > **Crucial Consequence (Dantzig §7-1, p. 153 — *Every Local Minimum Is a Global Minimum*):**
+    > **Crucial Consequence (*Every Local Minimum Is a Global Minimum*):**
     > Suppose $p \in P$ is a local minimum of $c'x$ over a polyhedron $P$, and suppose there were some other feasible point $q \in P$ with strictly lower cost $c'q < c'p$. Because $P$ is convex, every point on the line segment $x(\lambda) = \lambda p + (1-\lambda)q$ for $\lambda \in (0, 1)$ is feasible, and its cost is:
+    >
     > $$c'x(\lambda) = \lambda c'p + (1-\lambda)c'q < c'p$$
+    >
     > Even for $\lambda = 0.99999$ (arbitrarily close to $p$), $x(\lambda)$ has strictly lower cost than $p$, contradicting that $p$ is a local minimum! Thus, **LP cannot get trapped in non-global local minima**.
 
     ---
@@ -123,29 +183,39 @@ def sec1_theory(mo):
     | Symbol / Expression | Reading in Plain English | What It Means Geometrically & Computationally |
     | :--- | :--- | :--- |
     | $x \in \mathbb{R}^n$ | "$x$ is a column vector in $n$-dimensional real space" | A candidate decision point $x = (x_1, x_2, \dots, x_n)'$ with $n$ decision variables. |
-    | $a_i' x$ (or $a_i^\top x$) | "The inner (dot) product of row vector $a_i'$ with $x$" | Bertsimas & Tsitsiklis use prime ($'$) to denote matrix/vector **transpose**. Explicitly, $a_i'x = \sum_{j=1}^n a_{ij}x_j$. It measures how far $x$ projects along the normal direction $a_i$. |
+    | $a_i' x$ (or $a_i^\top x$) | "The inner (dot) product of row vector $a_i'$ with $x$" | We use prime ($'$) to denote matrix/vector **transpose**. Explicitly, $a_i'x = \sum_{j=1}^n a_{ij}x_j$. It measures how far $x$ projects along the normal direction $a_i$. |
     | $Ax \ge b$ | "Componentwise inequality between $Ax \in \mathbb{R}^m$ and $b \in \mathbb{R}^m$" | Shorthand for $m$ simultaneous inequalities: $a_1'x \ge b_1,\, a_2'x \ge b_2,\, \dots,\, a_m'x \ge b_m$. |
     | $\lambda x + (1-\lambda)y$, $\lambda \in [0, 1]$ | "Convex combination (interpolation) between $x$ and $y$" | Think of $\lambda$ as a **slider from $0$ to $1$**: at $\lambda = 0$ you stand at $y$; at $\lambda = 0.5$ you are at the exact midpoint $\frac{1}{2}(x+y)$; at $\lambda = 1$ you stand at $x$. |
-    | $x^1, \dots, x^k$ | "Superscript-indexed vectors in $\mathbb{R}^n$" | **Watch out for superscripts vs. subscripts!** In B&T, $x^1, x^2, \dots, x^k$ denote $k$ *different vectors* in $\mathbb{R}^n$ (not powers!), whereas $x_1, x_2, \dots, x_n$ with *subscripts* denote the $n$ scalar coordinates of a single vector $x$. |
+    | $x^1, \dots, x^k$ | "Superscript-indexed vectors in $\mathbb{R}^n$" | **Watch out for superscripts vs. subscripts!** Throughout this notebook, $x^1, x^2, \dots, x^k$ denote $k$ *different vectors* in $\mathbb{R}^n$ (not powers!), whereas $x_1, x_2, \dots, x_n$ with *subscripts* denote the $n$ scalar coordinates of a single vector $x$. |
 
     ---
 
-    ### 1.3 Worked Analytical Example *(Dantzig §7-1, pp. 149–151)*
+    ### 1.3 Worked Analytical Example
 
     Consider the 2D polyhedron $P \subset \mathbb{R}^2$ formed by the intersection of 4 halfspaces:
-    1. $x_1 + x_2 \ge 2$  *(normal $a_1 = (1, 1)'$, $b_1 = 2$)*
+
+    1. $x_1 + x_2 \ge 2$ *(normal $a_1 = (1, 1)'$, $b_1 = 2$)*
     2. $-x_1 + 2x_2 \le 6 \iff x_1 - 2x_2 \ge -6$
     3. $x_1 \le 7 \iff -x_1 \ge -7$
     4. $x_2 \ge 1$
 
     Take two feasible points inside $P$: $p = (6, 2)'$ and $q = (1, 3)'$.
+
     * Check $p = (6, 2)'$: $6+2 = 8 \ge 2$ ✓; $6 - 2(2) = 2 \ge -6$ ✓; $6 \le 7$ ✓; $2 \ge 1$ ✓.
     * Check $q = (1, 3)'$: $1+3 = 4 \ge 2$ ✓; $1 - 2(3) = -5 \ge -6$ ✓; $1 \le 7$ ✓; $3 \ge 1$ ✓.
 
     Now form the convex combination $x(\lambda) = \lambda p + (1-\lambda)q$ for any $\lambda \in [0, 1]$:
-    $$x(\lambda) = \begin{bmatrix} 6\lambda + 1(1-\lambda) \\ 2\lambda + 3(1-\lambda) \end{bmatrix} = \begin{bmatrix} 1 + 5\lambda \\ 3 - \lambda \end{bmatrix}$$
+
+    $$
+    x(\lambda) = \begin{bmatrix} 6\lambda + 1(1-\lambda) \\ 2\lambda + 3(1-\lambda) \end{bmatrix} = \begin{bmatrix} 1 + 5\lambda \\ 3 - \lambda \end{bmatrix}
+    $$
+
     At $\lambda = 0.5$ (midpoint): $x(0.5) = (3.5, 2.5)'$. Notice how the left-hand side of constraint 1 along the segment is:
-    $$x_1(\lambda) + x_2(\lambda) = (1 + 5\lambda) + (3 - \lambda) = 4 + 4\lambda = \lambda(8) + (1-\lambda)(4) \ge \lambda(2) + (1-\lambda)(2) = 2$$
+
+    $$
+    x_1(\lambda) + x_2(\lambda) = (1 + 5\lambda) + (3 - \lambda) = 4 + 4\lambda = \lambda(8) + (1-\lambda)(4) \ge \lambda(2) + (1-\lambda)(2) = 2
+    $$
+
     Every constraint value at $x(\lambda)$ is literally the $\lambda$-weighted average of its values at $p$ and $q$!
     """)
     return
@@ -155,7 +225,8 @@ def sec1_theory(mo):
 def sec1_ui(mo):
     lam_slider = mo.ui.slider(
         start=0.0, stop=1.0, step=0.05, value=0.4,
-        label=r"Convex combination weight $\lambda$ in $x(\lambda) = \lambda p + (1-\lambda)q$:"
+        label=r"Convex combination weight $\lambda$ in $x(\lambda) = \lambda p + (1-\lambda)q$:",
+        full_width=True,
     )
     lam_slider
     return (lam_slider,)
@@ -214,7 +285,7 @@ def sec1_code(lam_slider, linprog, mo, np, pl, plt):
         ax1.annotate("", xy=(_ox + _dv[0], _oy + _dv[1]), xytext=(_ox, _oy),
                      arrowprops=dict(arrowstyle="->", color=_col, lw=1.8))
 
-    # Plot p, q, segment, x(lambda), and Gurobi optimum
+    # Plot p, q, segment, x(lambda), and optimal solution
     ax1.plot([q_pt[0], p_pt[0]], [q_pt[1], p_pt[1]], "k--", lw=1.8, label="Segment $[q, p]$")
     ax1.scatter(*p_pt, color="#1e293b", s=70, zorder=5)
     ax1.text(p_pt[0] + 0.15, p_pt[1] - 0.15, "$p=(6,2)$", fontsize=9.5, weight="bold")
@@ -222,7 +293,7 @@ def sec1_code(lam_slider, linprog, mo, np, pl, plt):
     ax1.text(q_pt[0] + 0.15, q_pt[1] + 0.15, "$q=(1,3)$", fontsize=9.5, weight="bold")
     ax1.scatter(*x_lam, color="#dc2626", s=110, zorder=6, label=rf"$x(\lambda) = ({x_lam[0]:.2f}, {x_lam[1]:.2f})$")
     ax1.scatter(*x_opt_sec1, color="#f59e0b", edgecolor="black", s=140, marker="*", zorder=7,
-                label=rf"Gurobi $\min (x_1+2x_2)$ at $({x_opt_sec1[0]:.1f}, {x_opt_sec1[1]:.1f})$")
+                label=rf"Optimal Solution $\min (x_1+2x_2)$ at $({x_opt_sec1[0]:.1f}, {x_opt_sec1[1]:.1f})$")
 
     ax1.set_xlim(-1.2, 8.2)
     ax1.set_ylim(0.2, 7.0)
@@ -241,88 +312,146 @@ def sec1_code(lam_slider, linprog, mo, np, pl, plt):
         "Feasible (>= 0)?": ["Yes ✓" if s >= -1e-9 else "No" for s in surplus_lam],
     })
 
-    mo.hstack([fig1, mo.vstack([mo.md(f"**Convex Combination:** $x({lam_val:.2f}) = ({x_lam[0]:.2f},\\, {x_lam[1]:.2f})' \\in P$\n\n**Gurobi Optimal Corner:** $x^* = ({x_opt_sec1[0]:.1f},\\, {x_opt_sec1[1]:.1f})'$, $c'x^* = {obj_opt_sec1:.1f}$"), _df_sec1])], widths=[0.58, 0.42])
+    mo.hstack([fig1, mo.vstack([mo.md(f"**Convex Combination:** $x({lam_val:.2f}) = ({x_lam[0]:.2f},\\, {x_lam[1]:.2f})' \\in P$\n\n**Optimal Corner:** $x^* = ({x_opt_sec1[0]:.1f},\\, {x_opt_sec1[1]:.1f})'$, $c'x^* = {obj_opt_sec1:.1f}$"), _df_sec1])], widths=[0.58, 0.42])
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 2. Extreme Points, Vertices, and Basic Feasible Solutions
+    """)
     return
 
 
 @app.cell(hide_code=True)
 def sec2_theory(mo):
     mo.md(r"""
-    ---
-    ## 2. Extreme Points, Vertices, and Basic Feasible Solutions
-    *Sources: Bertsimas & Tsitsiklis §2.2 (pp. 46–53); Dantzig §7-1 (pp. 154–155)*
-
     ### 2.1 Formal Theory: Three Faces of a "Corner Point"
 
-    Intuitively, we know what a "corner" of a 2D polygon or 3D polyhedron looks like. However, in $\mathbb{R}^n$, we need a rigorous definition. Bertsimas & Tsitsiklis introduce **three distinct definitions** of a corner—two geometric and one algebraic—and prove in **Theorem 2.3** that all three describe the exact same set of points.
+    Intuitively, we know what a "corner" of a 2D polygon or 3D polyhedron looks like. However, in $\mathbb{R}^n$, we need a rigorous definition. We introduce **three distinct definitions** of a corner—two geometric and one algebraic—and prove in **Theorem 2.3** that all three describe the exact same set of points.
 
-    #### **1. Convex Geometry View — Definition 2.6 (Extreme Point)** *(B&T p. 46; Dantzig p. 154)*
+    #### **1. Convex Geometry View — Definition 2.6 (Extreme Point)**
     Let $P$ be a polyhedron. A vector $x \in P$ is an **extreme point** of $P$ if we **cannot** find two vectors $y, z \in P$, both different from $x$ ($y \ne x, z \ne x$), and a scalar $\lambda \in [0, 1]$ such that:
-    $$x = \lambda y + (1 - \lambda)z$$
-    * **Dantzig's Midpoint Formulation (§7-1, p. 154):** Equivalently, $x \in P$ is an extreme point if it is **not the midpoint** $\frac{1}{2}(y + z)$ of any two distinct points $y, z \in P$. Notice this definition is **purely intrinsic to the set $P$**—it does not even mention matrices $A$ or vectors $b$.
 
-    #### **2. Optimization / Supporting Hyperplane View — Definition 2.7 (Vertex)** *(B&T p. 47)*
+    $$
+    x = \lambda y + (1 - \lambda)z
+    $$
+
+    * **Midpoint Formulation:** Equivalently, $x \in P$ is an extreme point if it is **not the midpoint** $\frac{1}{2}(y + z)$ of any two distinct points $y, z \in P$. Notice this definition is **purely intrinsic to the set $P$**—it does not even mention matrices $A$ or vectors $b$.
+
+    #### **2. Optimization / Supporting Hyperplane View — Definition 2.7 (Vertex)**
     Let $P$ be a polyhedron. A vector $x \in P$ is a **vertex** of $P$ if there exists some cost vector $c \in \mathbb{R}^n$ such that:
-    $$c'x < c'y \quad \text{for all } y \in P \text{ with } y \ne x$$
+
+    $$
+    c'x < c'y \quad \text{for all } y \in P \text{ with } y \ne x
+    $$
+
     * **Geometric Meaning:** $x$ is the **unique optimal solution** to the linear program $\min_{y \in P} c'y$. Equivalently, the hyperplane $H = \{y \in \mathbb{R}^n \mid c'y = c'x\}$ slices space so that $P$ lies entirely on one side ($c'y \ge c'x$) and touches $H$ at the **single point** $\{x\}$ (a *strictly supporting hyperplane*).
 
-    #### **3. Algebraic / Linear System View — Definitions 2.8 & 2.9 (Active Constraints & Basic Feasible Solution)** *(B&T pp. 48–50)*
+    #### **3. Algebraic / Linear System View — Definitions 2.8 & 2.9 (Active Constraints & Basic Feasible Solution)**
     Neither geometric definition tells a computer *how to solve for a corner*. For that, we look at the linear constraints defining $P$:
-    $$a_i'x \ge b_i \quad (i \in M_1), \qquad a_i'x \le b_i \quad (i \in M_2), \qquad a_i'x = b_i \quad (i \in M_3)$$
+
+    $$
+    a_i'x \ge b_i \quad (i \in M_1), \qquad a_i'x \le b_i \quad (i \in M_2), \qquad a_i'x = b_i \quad (i \in M_3)
+    $$
+
+    Here $M_1, M_2, M_3$ are simply the **constraint index sets** partitioning all $m$ linear constraints by type ($\ge$, $\le$, and $=$), so $M = M_1 \cup M_2 \cup M_3$ is the set of all constraint indices.
 
     * **Definition 2.8 (Active / Binding Constraint):** If a vector $x^* \in \mathbb{R}^n$ satisfies $a_i'x^* = b_i$ with **equality** for some $i \in M_1 \cup M_2 \cup M_3$, we say constraint $i$ is **active** (or **binding**) at $x^*$. We denote the set of active constraint indices at $x^*$ by:
-      $$I(x^*) = \{i \in M_1 \cup M_2 \cup M_3 \mid a_i'x^* = b_i\}$$
+
+    $$
+    I(x^*) = \{i \in M_1 \cup M_2 \cup M_3 \mid a_i'x^* = b_i\}
+    $$
+
     * **Theorem 2.2 (When Active Constraints Pin Down a Unique Point):** Let $x^* \in \mathbb{R}^n$ have active index set $I = I(x^*)$. The following three statements are equivalent:
-      1. **(a)** There exist **$n$ vectors** in the active normal family $\{a_i \mid i \in I\}$ that are **linearly independent**.
-      2. **(b)** The span of $\{a_i \mid i \in I\}$ is all of $\mathbb{R}^n$: $\operatorname{span}(\{a_i \mid i \in I\}) = \mathbb{R}^n$.
-      3. **(c)** The system of active equations $a_i'x = b_i$ ($i \in I$) has a **unique solution** in $\mathbb{R}^n$ (namely $x^*$).
-      * *Why?* If the active normals $\{a_i\}_{i \in I}$ do not span $\mathbb{R}^n$, their orthogonal complement is nontrivial—meaning there exists a nonzero vector $d \ne 0$ such that $a_i'd = 0$ for all $i \in I$. Then $a_i'(x^* + d) = a_i'x^* + 0 = b_i$ for all $i \in I$, so you can slide along $d$ without leaving any active hyperplane!
+    1. **(a)** There exist **$n$ vectors** in the active normal family $\{a_i \mid i \in I\}$ that are **linearly independent**.
+    2. **(b)** The span of $\{a_i \mid i \in I\}$ is all of $\mathbb{R}^n$: $\operatorname{span}(\{a_i \mid i \in I\}) = \mathbb{R}^n$.
+    3. **(c)** The system of active equations $a_i'x = b_i$ ($i \in I$) has a **unique solution** in $\mathbb{R}^n$ (namely $x^*$).
+
+    *Why?* If the active normals $\{a_i\}_{i \in I}$ do not span $\mathbb{R}^n$, their orthogonal complement is nontrivial—meaning there exists a nonzero vector $d \ne 0$ such that $a_i'd = 0$ for all $i \in I$. Then $a_i'(x^* + d) = a_i'x^* + 0 = b_i$ for all $i \in I$, so you can slide along $d$ without leaving any active hyperplane!
+
     * **Definition 2.9 (Basic Solution and Basic Feasible Solution):** Given a polyhedron $P \subseteq \mathbb{R}^n$:
-      1. **(a) Basic Solution:** $x^* \in \mathbb{R}^n$ is a **basic solution** if:
-         - *(i)* All equality constraints ($i \in M_3$) are satisfied ($a_i'x^* = b_i$), and
-         - *(ii)* Out of the constraints active at $x^*$, there are **$n$ linearly independent** constraints.
-      2. **(b) Basic Feasible Solution (BFS):** If $x^*$ is a basic solution that satisfies **all** constraints ($x^* \in P$), it is a **basic feasible solution**.
+    1. **(a) Basic Solution:** $x^* \in \mathbb{R}^n$ is a **basic solution** if (i) all equality constraints ($i \in M_3$) are satisfied ($a_i'x^* = b_i$), and (ii) out of the constraints active at $x^*$, there are **$n$ linearly independent** constraints.
+    2. **(b) Basic Feasible Solution (BFS):** If $x^*$ is a basic solution that satisfies **all** constraints ($x^* \in P$), it is a **basic feasible solution**.
 
     ---
 
     ### 2.2 The Grand Equivalence Theorem & Proof Mechanics
 
-    #### **Theorem 2.3 (Equivalence of Vertex, Extreme Point, and BFS)** *(B&T pp. 50–52)*
+    #### **Theorem 2.3 (Equivalence of Vertex, Extreme Point, and BFS)**
     Let $P = \{x \in \mathbb{R}^n \mid Ax \ge b\}$ be a nonempty polyhedron and let $x^* \in P$. Then the following are equivalent:
-    $$\boxed{\text{(a) } x^* \text{ is a Vertex} \quad \Longleftrightarrow \quad \text{(b) } x^* \text{ is an Extreme Point} \quad \Longleftrightarrow \quad \text{(c) } x^* \text{ is a Basic Feasible Solution (BFS)}}$$
+
+    $$
+    \boxed{\text{(a) } x^* \text{ is a Vertex} \quad \Longleftrightarrow \quad \text{(b) } x^* \text{ is an Extreme Point} \quad \Longleftrightarrow \quad \text{(c) } x^* \text{ is a Basic Feasible Solution (BFS)}}
+    $$
 
     Let us trace all three steps of the circular proof—because each step teaches a fundamental geometric technique:
 
-    1. **$\text{(a) Vertex} \implies \text{(b) Extreme Point}$:**
-       Suppose $x^*$ is a vertex. Then there exists $c \in \mathbb{R}^n$ such that $c'x^* < c'y$ for all $y \in P \setminus \{x^*\}$. Take any two points $y, z \in P$ with $y \ne x^*, z \ne x^*$ and any $\lambda \in [0, 1]$. Since $c'x^* < c'y$ and $c'x^* < c'z$, taking their convex combination gives:
-       $$c'(\lambda y + (1-\lambda)z) = \lambda c'y + (1-\lambda)c'z > \lambda c'x^* + (1-\lambda)c'x^* = c'x^*$$
-       Because $c'(\lambda y + (1-\lambda)z) > c'x^*$, the point $\lambda y + (1-\lambda)z$ **cannot equal $x^*$**. Thus $x^*$ is an extreme point.
+    **Step 1: $\text{(a) Vertex} \implies \text{(b) Extreme Point}$**
 
-    2. **$\text{(b) Extreme Point} \implies \text{(c) Basic Feasible Solution}$ *(Proved via Contrapositive: $\neg\text{BFS} \implies \neg\text{Extreme Point}$)*:**
-       Suppose $x^* \in P$ is **not** a BFS. Let $I = \{i \mid a_i'x^* = b_i\}$ be the active constraints at $x^*$.
-       * **Active constraints ($i \in I$):** Satisfied with equality, $a_i'x^* = b_i$.
-       * **Inactive constraints ($i \notin I$):** Satisfied with **strict inequality** (strictly positive slack), $a_i'x^* > b_i$.
-       Because $x^*$ is not a BFS, fewer than $n$ vectors in $\{a_i \mid i \in I\}$ are linearly independent. Therefore, $\{a_i \mid i \in I\}$ spans a proper subspace of $\mathbb{R}^n$, which means there exists a **nonzero direction vector $d \ne 0$ orthogonal to every active normal**:
-       $$a_i'd = 0 \quad \text{for all } i \in I$$
-       Now perturb $x^*$ forward and backward along $d$ by a tiny step $\epsilon > 0$:
-       $$y = x^* + \epsilon d, \qquad z = x^* - \epsilon d$$
-       * What happens to **active constraints ($i \in I$)**? $a_i'y = a_i'x^* + \epsilon(a_i'd) = b_i + 0 = b_i$, and similarly $a_i'z = b_i$. They stay right on the active boundaries!
-       * What happens to **inactive constraints ($i \notin I$)**? Since $a_i'x^* - b_i > 0$, as long as we pick $\epsilon > 0$ small enough that $\epsilon |a_i'd| \le a_i'x^* - b_i$ for all $i \notin I$, both $y$ and $z$ still satisfy $a_i'y \ge b_i$ and $a_i'z \ge b_i$!
-       Thus $y, z \in P$, $y \ne x^*$, $z \ne x^*$, and:
-       $$x^* = \frac{1}{2}y + \frac{1}{2}z$$
-       So $x^*$ is the midpoint of $y$ and $z$ and is **not** an extreme point!
+    Suppose $x^*$ is a vertex. Then there exists $c \in \mathbb{R}^n$ such that $c'x^* < c'y$ for all $y \in P \setminus \{x^*\}$. Take any two points $y, z \in P$ with $y \ne x^*, z \ne x^*$ and any $\lambda \in [0, 1]$. Since $c'x^* < c'y$ and $c'x^* < c'z$, taking their convex combination gives:
 
-    3. **$\text{(c) Basic Feasible Solution} \implies \text{(a) Vertex}$ *(Constructing the Exact Objective Vector $c$)*:**
-       Suppose $x^* \in P$ is a BFS with active set $I = \{i \mid a_i'x^* = b_i\}$. How do we construct a cost vector $c$ that is uniquely minimized at $x^*$? Simply **sum the active inward normals**:
-       $$c = \sum_{i \in I} a_i$$
-       For any feasible point $x \in P$, we have $a_i'x \ge b_i$ for every $i \in I$. Summing over $i \in I$:
-       $$c'x = \sum_{i \in I} a_i'x \ge \sum_{i \in I} b_i = \sum_{i \in I} a_i'x^* = c'x^*$$
-       When can equality $c'x = c'x^*$ hold? Since every term satisfies $a_i'x - b_i \ge 0$, their sum is zero **if and only if every single term is zero**: $a_i'x = b_i$ for all $i \in I$. By Theorem 2.2, because $I$ contains $n$ linearly independent vectors, $x^*$ is the **unique** solution to $\{a_i'x = b_i,\, i \in I\}$. Hence $c'x > c'x^*$ for all $x \in P \setminus \{x^*\}$, proving $x^*$ is a vertex! $\blacksquare$
+    $$
+    c'(\lambda y + (1-\lambda)z) = \lambda c'y + (1-\lambda)c'z > \lambda c'x^* + (1-\lambda)c'x^* = c'x^*
+    $$
 
-    #### **Corollary 2.1 (Finite Number of Basic Feasible Solutions)** *(B&T p. 52)*
+    Because $c'(\lambda y + (1-\lambda)z) > c'x^*$, the point $\lambda y + (1-\lambda)z$ **cannot equal $x^*$**. Thus $x^*$ is an extreme point.
+
+    **Step 2: $\text{(b) Extreme Point} \implies \text{(c) Basic Feasible Solution}$ *(Contrapositive: $\neg\text{BFS} \implies \neg\text{Extreme Point}$)* **
+
+    Suppose $x^* \in P$ is **not** a BFS. Let $I = \{i \mid a_i'x^* = b_i\}$ be the active constraints at $x^*$:
+
+    * **Active constraints ($i \in I$):** Satisfied with equality, $a_i'x^* = b_i$.
+    * **Inactive constraints ($i \notin I$):** Satisfied with **strict inequality** (strictly positive slack), $a_i'x^* > b_i$.
+
+    Because $x^*$ is not a BFS, fewer than $n$ vectors in $\{a_i \mid i \in I\}$ are linearly independent. Therefore, $\{a_i \mid i \in I\}$ spans a proper subspace of $\mathbb{R}^n$, which means there exists a **nonzero direction vector $d \ne 0$ orthogonal to every active normal**:
+
+    $$
+    a_i'd = 0 \quad \text{for all } i \in I
+    $$
+
+    Now perturb $x^*$ forward and backward along $d$ by a tiny step $\epsilon > 0$:
+
+    $$
+    y = x^* + \epsilon d, \qquad z = x^* - \epsilon d
+    $$
+
+    * What happens to **active constraints ($i \in I$)**? $a_i'y = a_i'x^* + \epsilon(a_i'd) = b_i + 0 = b_i$, and similarly $a_i'z = b_i$. They stay right on the active boundaries!
+    * What happens to **inactive constraints ($i \notin I$)**? Since $a_i'x^* - b_i > 0$, as long as we pick $\epsilon > 0$ small enough that $\epsilon |a_i'd| \le a_i'x^* - b_i$ for all $i \notin I$, both $y$ and $z$ still satisfy $a_i'y \ge b_i$ and $a_i'z \ge b_i$!
+
+    Thus $y, z \in P$, $y \ne x^*$, $z \ne x^*$, and:
+
+    $$
+    x^* = \frac{1}{2}y + \frac{1}{2}z
+    $$
+
+    So $x^*$ is the midpoint of $y$ and $z$ and is **not** an extreme point!
+
+    **Step 3: $\text{(c) Basic Feasible Solution} \implies \text{(a) Vertex}$ *(Constructing the Exact Objective Vector $c$)* **
+
+    Suppose $x^* \in P$ is a BFS with active set $I = \{i \mid a_i'x^* = b_i\}$. How do we construct a cost vector $c$ that is uniquely minimized at $x^*$? Simply **sum the active inward normals**:
+
+    $$
+    c = \sum_{i \in I} a_i
+    $$
+
+    For any feasible point $x \in P$, we have $a_i'x \ge b_i$ for every $i \in I$. Summing over $i \in I$:
+
+    $$
+    c'x = \sum_{i \in I} a_i'x \ge \sum_{i \in I} b_i = \sum_{i \in I} a_i'x^* = c'x^*
+    $$
+
+    When can equality $c'x = c'x^*$ hold? Since every term satisfies $a_i'x - b_i \ge 0$, their sum is zero **if and only if every single term is zero**: $a_i'x = b_i$ for all $i \in I$. By Theorem 2.2, because $I$ contains $n$ linearly independent vectors, $x^*$ is the **unique** solution to $\{a_i'x = b_i,\, i \in I\}$. Hence $c'x > c'x^*$ for all $x \in P \setminus \{x^*\}$, proving $x^*$ is a vertex! $\blacksquare$
+
+    #### **Corollary 2.1 (Finite Number of Basic Feasible Solutions)**
     For a polyhedron defined by $m$ linear constraints in $\mathbb{R}^n$, every basic solution is uniquely determined by choosing $n$ linearly independent active constraints out of $m$. Therefore:
-    $$\#(\text{Extreme Points / BFSs}) \le \#(\text{Basic Solutions}) \le \binom{m}{n} = \frac{m!}{n!(m-n)!} < \infty$$
-    * **Adjacent Basic Solutions & Edges (B&T p. 53; Dantzig p. 155):** Two distinct basic solutions in $\mathbb{R}^n$ are **adjacent** if they share $n - 1$ linearly independent active constraints. If two adjacent basic solutions are both feasible (BFSs), the line segment joining them is an **edge** of the polyhedron.
+
+    $$
+    \#(\text{Extreme Points / BFSs}) \le \#(\text{Basic Solutions}) \le \binom{m}{n} = \frac{m!}{n!(m-n)!} < \infty
+    $$
+
+    * **Adjacent Basic Solutions & Edges:** Two distinct basic solutions in $\mathbb{R}^n$ are **adjacent** if they share $n - 1$ linearly independent active constraints. If two adjacent basic solutions are both feasible (BFSs), the line segment joining them is an **edge** of the polyhedron.
 
     ---
 
@@ -337,21 +466,20 @@ def sec2_theory(mo):
 
     ---
 
-    ### 2.4 Worked Analytical Example *(B&T Figure 2.7 Style)*
+    ### 2.4 Worked Analytical Example
 
     Consider $P \subset \mathbb{R}^2$ ($n = 2$) with $m = 4$ constraints written in $Ax \ge b$ form:
+
     1. $x_1 \ge 0 \quad (a_1 = (1, 0)',\, b_1 = 0)$
     2. $x_2 \ge 0 \quad (a_2 = (0, 1)',\, b_2 = 0)$
     3. $-x_1 - x_2 \ge -4 \iff x_1 + x_2 \le 4 \quad (a_3 = (-1, -1)',\, b_3 = -4)$
     4. $-x_1 + x_2 \ge -2 \iff x_1 - x_2 \le 2 \quad (a_4 = (-1, 1)',\, b_4 = -2)$
 
     Since $n = 2$ and $m = 4$, there are at most $\binom{4}{2} = 6$ basic solutions:
-    * **Pair $\{1, 2\}$ ($x_1 = 0, x_2 = 0$):** $x = (0, 0)'$. Check constraints 3 & 4: $0 \le 4$ ✓, $0 \le 2$ ✓ $\implies$ **BFS #1**.
-      - Active normals sum: $c = a_1 + a_2 = (1, 1)'$. Minimizing $x_1 + x_2$ over $P$ has unique optimum $(0, 0)'$!
-    * **Pair $\{2, 4\}$ ($x_2 = 0, x_1 - x_2 = 2$):** $x = (2, 0)'$. Check 1 & 3: $2 \ge 0$ ✓, $2 \le 4$ ✓ $\implies$ **BFS #2**.
-      - Active normals sum: $c = a_2 + a_4 = (0, 1)' + (-1, 1)' = (-1, 2)'$. Minimizing $-x_1 + 2x_2$ over $P$ has unique optimum $(2, 0)'$!
-    * **Pair $\{3, 4\}$ ($x_1 + x_2 = 4, x_1 - x_2 = 2$):** $x = (3, 1)'$. Check 1 & 2: $3 \ge 0$ ✓, $1 \ge 0$ ✓ $\implies$ **BFS #3**.
-      - Active normals sum: $c = a_3 + a_4 = (-2, 0)'$. Minimizing $-2x_1$ over $P$ has unique optimum $(3, 1)'$!
+
+    * **Pair $\{1, 2\}$ ($x_1 = 0, x_2 = 0$):** $x = (0, 0)'$. Check constraints 3 & 4: $0 \le 4$ ✓, $0 \le 2$ ✓ $\implies$ **BFS #1**. Active normals sum: $c = a_1 + a_2 = (1, 1)'$; minimizing $x_1 + x_2$ over $P$ has unique optimum $(0, 0)'$!
+    * **Pair $\{2, 4\}$ ($x_2 = 0, x_1 - x_2 = 2$):** $x = (2, 0)'$. Check 1 & 3: $2 \ge 0$ ✓, $2 \le 4$ ✓ $\implies$ **BFS #2**. Active normals sum: $c = a_2 + a_4 = (0, 1)' + (-1, 1)' = (-1, 2)'$; minimizing $-x_1 + 2x_2$ over $P$ has unique optimum $(2, 0)'$!
+    * **Pair $\{3, 4\}$ ($x_1 + x_2 = 4, x_1 - x_2 = 2$):** $x = (3, 1)'$. Check 1 & 2: $3 \ge 0$ ✓, $1 \ge 0$ ✓ $\implies$ **BFS #3**. Active normals sum: $c = a_3 + a_4 = (-2, 0)'$; minimizing $-2x_1$ over $P$ has unique optimum $(3, 1)'$!
     * **Pair $\{1, 3\}$ ($x_1 = 0, x_1 + x_2 = 4$):** $x = (0, 4)'$. Check 2 & 4: $4 \ge 0$ ✓, $0 - 4 = -4 \le 2$ ✓ $\implies$ **BFS #4**.
     * **Pair $\{2, 3\}$ ($x_2 = 0, x_1 + x_2 = 4$):** $x = (4, 0)'$. Check 4: $4 - 0 = 4 \not\le 2$ ✗ $\implies$ **Basic Solution, NOT Feasible!**
     * **Pair $\{1, 4\}$ ($x_1 = 0, x_1 - x_2 = 2$):** $x = (0, -2)'$. Check 2: $-2 \not\ge 0$ ✗ $\implies$ **Basic Solution, NOT Feasible!**
@@ -426,8 +554,8 @@ def sec2_code(bfs_selector, linprog, mo, np, pl, plt):
 
     # Solve min c'x s.t. A x >= b with SciPy (HiGHS) to verify x* is the unique optimal vertex
     _res2 = linprog(c_thm23, A_ub=-A_sec2, b_ub=-b_sec2, bounds=(None, None), method="highs")
-    gurobi_vertex = _res2.x.copy()
-    gurobi_opt_val = float(_res2.fun)
+    opt_vertex = _res2.x.copy()
+    opt_val_sec2 = float(_res2.fun)
 
     # Also illustrate non-BFS point w = (1.5, 2.5) on constraint 3 only (rank 1 < n=2)
     w_non_bfs = np.array([1.5, 2.5])  # Active only at constraint 3: -x1 - x2 = -4
@@ -471,8 +599,8 @@ def sec2_code(bfs_selector, linprog, mo, np, pl, plt):
         ax2.axvline(_rhs_supp / c_thm23[0], color="#dc2626", lw=2.5, ls="--",
                     label=rf"Supporting Hyperplane $c'x = {_rhs_supp:.1f}$ ($c=({c_thm23[0]:.0f},{c_thm23[1]:.0f})'$)")
 
-    ax2.scatter(*gurobi_vertex, color="#dc2626", edgecolor="black", s=160, marker="*", zorder=8,
-                label=f"Gurobi Unique Vertex: ({gurobi_vertex[0]:.1f}, {gurobi_vertex[1]:.1f})")
+    ax2.scatter(*opt_vertex, color="#dc2626", edgecolor="black", s=160, marker="*", zorder=8,
+                label=f"Optimal Solution (Unique Vertex): ({opt_vertex[0]:.1f}, {opt_vertex[1]:.1f})")
 
     ax2.set_xlim(-0.8, 4.8)
     ax2.set_ylim(-2.6, 4.8)
@@ -489,7 +617,7 @@ def sec2_code(bfs_selector, linprog, mo, np, pl, plt):
             mo.md(
                 f"**Selected BFS:** $x^* = ({_sel_x[0]:.0f}, {_sel_x[1]:.0f})'$ with active set $I(x^*) = \\{{{_sel_I[0]+1}, {_sel_I[1]+1}\\}}$\n\n"
                 f"**Constructed Cost Vector (Theorem 2.3):** $c = a_{_sel_I[0]+1} + a_{_sel_I[1]+1} = ({c_thm23[0]:.0f}, {c_thm23[1]:.0f})'$\n\n"
-                f"**Gurobi Solution to $\\min_{{x \\in P}} c'x$:** $x^{{\\text{{Gurobi}}}} = ({gurobi_vertex[0]:.1f}, {gurobi_vertex[1]:.1f})'$ with objective $c'x^* = {gurobi_opt_val:.1f}$"
+                f"**Optimal Solution to $\\min_{{x \\in P}} c'x$:** $x^* = ({opt_vertex[0]:.1f}, {opt_vertex[1]:.1f})'$ with objective $c'x^* = {opt_val_sec2:.1f}$"
             ),
             pl.DataFrame(basic_records),
         ])
@@ -498,57 +626,93 @@ def sec2_code(bfs_selector, linprog, mo, np, pl, plt):
 
 
 @app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 3. Polyhedra in Standard Form & The Simplex Algebra
+    """)
+    return
+
+
+@app.cell(hide_code=True)
 def sec3_theory(mo):
     mo.md(r"""
-    ---
-    ## 3. Polyhedra in Standard Form
-    *Sources: Bertsimas & Tsitsiklis §2.3 (pp. 53–58); Dantzig §7-2, §7-3 & §8-5*
-
     ### 3.1 Formal Theory: From Active Constraints to Basis Matrices $B$
 
-    While general polyhedra $\{x \in \mathbb{R}^n \mid Ax \ge b\}$ are convenient for geometric proofs, industrial LP solvers (including the Simplex method in Gurobi) operate on **polyhedra in standard form**:
-    $$P = \{x \in \mathbb{R}^n \mid Ax = b,\; x \ge 0\}$$
+    While general polyhedra $\{x \in \mathbb{R}^n \mid Ax \ge b\}$ are convenient for geometric proofs, industrial LP solvers (such as HiGHS or GLPK) operate on **polyhedra in standard form**:
+
+    $$
+    P = \{x \in \mathbb{R}^n \mid Ax = b,\; x \ge 0\}
+    $$
+
     where $A \in \mathbb{R}^{m \times n}$ has $m$ rows and $n$ columns ($m \le n$), and we assume $\operatorname{rank}(A) = m$ (the $m$ rows of $A$ are linearly independent).
 
     #### **How Does Definition 2.9 (Basic Solution) Specialize to Standard Form?**
     In standard form, there are $m$ equality constraints ($Ax = b$) and $n$ nonnegativity inequalities ($x_1 \ge 0, \dots, x_n \ge 0$), for a total of $m + n$ constraints in $\mathbb{R}^n$:
+
     1. Every basic solution **must satisfy all $m$ equality constraints $Ax = b$**, which immediately gives us **$m$ linearly independent active constraints**.
     2. To reach a total of **$n$ linearly independent active constraints** in $\mathbb{R}^n$, we must pick **$n - m$ variables and set them to zero** ($x_i = 0$), making their nonnegativity constraints $x_i \ge 0$ active!
     3. Which $n - m$ variables can we set to zero? If we set $n - m$ variables to zero, the remaining **$m$ variables** $x_{B(1)}, \dots, x_{B(m)}$ must be uniquely determined by the $m$ equations $Ax = b$. That happens **if and only if** their $m$ corresponding columns $A_{B(1)}, \dots, A_{B(m)}$ are linearly independent!
 
-    #### **Theorem 2.4 (Characterization of Basic Solutions in Standard Form)** *(B&T p. 53)*
+    #### **Theorem 2.4 (Characterization of Basic Solutions in Standard Form)**
     Consider the constraints $Ax = b$ and $x \ge 0$, where the $m \times n$ matrix $A$ has linearly independent rows ($\operatorname{rank}(A) = m$). A vector $x \in \mathbb{R}^n$ is a **basic solution** if and only if $Ax = b$ and there exist $m$ distinct indices $B(1), \dots, B(m) \in \{1, \dots, n\}$ such that:
+
     1. **(a)** The $m$ columns $A_{B(1)}, \dots, A_{B(m)} \in \mathbb{R}^m$ are **linearly independent**;
     2. **(b)** If $i \notin \{B(1), \dots, B(m)\}$, then $x_i = 0$.
 
-    * **Proof:**
-      - *$(\Longleftarrow)$ Suppose (a) and (b) hold:* Since $x_i = 0$ for all $i \notin \{B(1), \dots, B(m)\}$, the system $Ax = b$ reduces to:
-        $$\sum_{i=1}^m A_{B(i)} x_{B(i)} = b$$
-        Because the $m$ columns $A_{B(1)}, \dots, A_{B(m)} \in \mathbb{R}^m$ are linearly independent, they form an invertible $m \times m$ matrix $B$, so $x_{B(1)}, \dots, x_{B(m)}$ are uniquely determined ($x_B = B^{-1}b$). Since the active constraints ($Ax = b$ and $x_i = 0$ for $i \notin B$) have a unique solution, Theorem 2.2 guarantees that $n$ of these active constraints are linearly independent. Thus $x$ is a basic solution.
-      - *$(\Longrightarrow)$ Suppose $x$ is a basic solution:* Let $x_{B(1)}, \dots, x_{B(k)}$ be the strictly nonzero components of $x$. By Definition 2.9 and Theorem 2.2, the active constraints $\sum_{i=1}^k A_{B(i)} x_{B(i)} = b$ and $x_i = 0$ ($i \notin \{B(1), \dots, B(k)\}$) have a unique solution. Thus the columns $A_{B(1)}, \dots, A_{B(k)}$ must be linearly independent (otherwise a nontrivial combination $\sum_{i=1}^k \lambda_i A_{B(i)} = 0$ would yield multiple solutions $x_{B(i)} + \lambda_i$). Hence $k \le m$. Because $\operatorname{rank}(A) = m$, the column space of $A$ is $\mathbb{R}^m$, so we can extend the independent set $\{A_{B(1)}, \dots, A_{B(k)}\}$ by picking $m - k$ additional columns $A_{B(k+1)}, \dots, A_{B(m)}$ of $A$ to form $m$ linearly independent columns, with $x_{B(k+1)} = \dots = x_{B(m)} = 0$ and $x_i = 0$ for all $i \notin \{B(1), \dots, B(m)\}$. $\blacksquare$
+    **Proof:**
+
+    * **$({\Longleftarrow})$ Suppose (a) and (b) hold:** Since $x_i = 0$ for all $i \notin \{B(1), \dots, B(m)\}$, the system $Ax = b$ reduces to:
+
+    $$
+    \sum_{i=1}^m A_{B(i)} x_{B(i)} = b
+    $$
+
+    Because the $m$ columns $A_{B(1)}, \dots, A_{B(m)} \in \mathbb{R}^m$ are linearly independent, they form an invertible $m \times m$ matrix $B$, so $x_{B(1)}, \dots, x_{B(m)}$ are uniquely determined ($x_B = B^{-1}b$). Since the active constraints ($Ax = b$ and $x_i = 0$ for $i \notin B$) have a unique solution, Theorem 2.2 guarantees that $n$ of these active constraints are linearly independent. Thus $x$ is a basic solution.
+
+    * **$({\Longrightarrow})$ Suppose $x$ is a basic solution:** Let $x_{B(1)}, \dots, x_{B(k)}$ be the strictly nonzero components of $x$. By Definition 2.9 and Theorem 2.2, the active constraints $\sum_{i=1}^k A_{B(i)} x_{B(i)} = b$ and $x_i = 0$ ($i \notin \{B(1), \dots, B(k)\}$) have a unique solution. Thus the columns $A_{B(1)}, \dots, A_{B(k)}$ must be linearly independent (otherwise a nontrivial combination $\sum_{i=1}^k \lambda_i A_{B(i)} = 0$ would yield multiple solutions $x_{B(i)} + \lambda_i$). Hence $k \le m$. Because $\operatorname{rank}(A) = m$, the column space of $A$ is $\mathbb{R}^m$, so we can extend the independent set $\{A_{B(1)}, \dots, A_{B(k)}\}$ by picking $m - k$ additional columns $A_{B(k+1)}, \dots, A_{B(m)}$ of $A$ to form $m$ linearly independent columns, with $x_{B(k+1)} = \dots = x_{B(m)} = 0$ and $x_i = 0$ for all $i \notin \{B(1), \dots, B(m)\}$. $\blacksquare$
 
     ---
 
-    ### 3.2 Canonical 3-Step Procedure & Matrix Notation *(B&T pp. 54–55)*
+    ### 3.2 Canonical 3-Step Procedure & Matrix Notation
 
     Every basic solution (and therefore every basic feasible solution) of $P = \{x \in \mathbb{R}^n \mid Ax = b, x \ge 0\}$ is constructed by:
-    1. **Step 1 (Choose a Basis):** Choose $m$ linearly independent columns $A_{B(1)}, \dots, A_{B(m)}$ of $A$, forming the invertible $m \times m$ **basis matrix**:
-       $$B = \begin{bmatrix} | & | & & | \\ A_{B(1)} & A_{B(2)} & \cdots & A_{B(m)} \\ | & | & & | \end{bmatrix} \in \mathbb{R}^{m \times m}, \qquad \det(B) \ne 0$$
-    2. **Step 2 (Fix Nonbasic Variables to Zero):** Set all $n - m$ **nonbasic variables** to zero:
-       $$x_i = 0 \quad \text{for all } i \notin \{B(1), \dots, B(m)\} \qquad (x_N = 0)$$
-    3. **Step 3 (Solve for Basic Variables):** Solve the $m \times m$ linear system $B x_B = b$ for the vector of **basic variables** $x_B = (x_{B(1)}, \dots, x_{B(m)})'$:
-       $$\boxed{x_B = B^{-1}b}$$
-       * **Feasibility Test:** If **$x_B = B^{-1}b \ge 0$** (every basic variable is nonnegative), then $x$ is a **Basic Feasible Solution (BFS)**! If even one component of $B^{-1}b$ is negative, $x$ is an *infeasible basic solution*.
 
-    #### **Column Geometry ("Requirement Space") Intuition *(B&T Figure 2.8, p. 56; Dantzig §7-3)***
+    **Step 1 (Choose a Basis):** Choose $m$ linearly independent columns $A_{B(1)}, \dots, A_{B(m)}$ of $A$, forming the invertible $m \times m$ **basis matrix**:
+
+    $$
+    B = \begin{bmatrix} | & | & & | \\ A_{B(1)} & A_{B(2)} & \cdots & A_{B(m)} \\ | & | & & | \end{bmatrix} \in \mathbb{R}^{m \times m}, \qquad \det(B) \ne 0
+    $$
+
+    **Step 2 (Fix Nonbasic Variables to Zero):** Set all $n - m$ **nonbasic variables** to zero:
+
+    $$
+    x_i = 0 \quad \text{for all } i \notin \{B(1), \dots, B(m)\} \qquad (x_N = 0)
+    $$
+
+    **Step 3 (Solve for Basic Variables):** Solve the $m \times m$ linear system $B x_B = b$ for the vector of **basic variables** $x_B = (x_{B(1)}, \dots, x_{B(m)})'$:
+
+    $$
+    \boxed{x_B = B^{-1}b}
+    $$
+
+    * **Feasibility Test:** If **$x_B = B^{-1}b \ge 0$** (every basic variable is nonnegative), then $x$ is a **Basic Feasible Solution (BFS)**! If even one component of $B^{-1}b$ is negative, $x$ is an *infeasible basic solution*.
+
+    #### **Column Geometry ("Requirement Space") Intuition**
     Write $Ax = b$ as a linear combination of the columns of $A$:
-    $$\sum_{j=1}^n A_j x_j = b \quad \xrightarrow{\text{set } x_N = 0} \quad A_{B(1)} x_{B(1)} + \dots + A_{B(m)} x_{B(m)} = b$$
+
+    $$
+    \sum_{j=1}^n A_j x_j = b \quad \xrightarrow{\text{set } x_N = 0} \quad A_{B(1)} x_{B(1)} + \dots + A_{B(m)} x_{B(m)} = b
+    $$
+
     * **When do columns form a valid basis?** When $A_{B(1)}, \dots, A_{B(m)}$ span $\mathbb{R}^m$ (in $\mathbb{R}^2$, two columns that do not lie on the same line through the origin).
     * **When is the basis FEASIBLE ($B^{-1}b \ge 0$)?** When the target requirement vector $b \in \mathbb{R}^m$ lies inside the **nonnegative cone** $\operatorname{cone}(A_{B(1)}, \dots, A_{B(m)}) = \{\sum_{i=1}^m \theta_i A_{B(i)} \mid \theta_i \ge 0\}$ spanned by those $m$ columns!
 
-    #### **Theorem 2.5 (Why Full Row Rank $\operatorname{rank}(A) = m$ Is Without Loss of Generality)** *(B&T p. 57)*
+    #### **Theorem 2.5 (Why Full Row Rank $\operatorname{rank}(A) = m$ Is Without Loss of Generality)**
     If $P = \{x \in \mathbb{R}^n \mid Ax = b, x \ge 0\}$ is **nonempty** and $\operatorname{rank}(A) = k < m$, let $a_{i_1}', \dots, a_{i_k}'$ be any $k$ linearly independent rows of $A$. Then every other row $a_i'$ is a linear combination $a_i' = \sum_{j=1}^k \lambda_{ij} a_{i_j}'$, and because $P \ne \emptyset$, $b_i = \sum_{j=1}^k \lambda_{ij} b_{i_j}$ is automatically consistent. Discarding the $m - k$ dependent rows leaves the **exact same polyhedron**:
-    $$Q = \{x \in \mathbb{R}^n \mid a_{i_j}'x = b_{i_j},\; j = 1, \dots, k,\; x \ge 0\} = P$$
+
+    $$
+    Q = \{x \in \mathbb{R}^n \mid a_{i_j}'x = b_{i_j},\; j = 1, \dots, k,\; x \ge 0\} = P
+    $$
 
     ---
 
@@ -557,36 +721,41 @@ def sec3_theory(mo):
     | Symbol / Term | Plain-English Meaning | Dimensions & Role |
     | :--- | :--- | :--- |
     | $B = \{B(1), \dots, B(m)\}$ | **Basis Index Set:** The subset of $m$ column indices chosen to be "in the basis". | Set of $m$ integers from $\{1, \dots, n\}$. Two bases are considered the *same* if they contain the same set of indices (regardless of ordering). |
-    | $A_{B(i)}$ vs. $a_i'$ | **Column vs. Row Notation:** Uppercase $A_j \in \mathbb{R}^m$ is the **$j$-th column** of $A$; lowercase $a_i' \in \mathbb{R}^{1 \times n}$ is the **$i$-th row** of $A$. | B&T use this capitalization convention systematically: $Ax = \sum_{j=1}^n A_j x_j$ (column view) vs. $(Ax)_i = a_i' x$ (row view). |
+    | $A_{B(i)}$ vs. $a_i'$ | **Column vs. Row Notation:** Uppercase $A_j \in \mathbb{R}^m$ is the **$j$-th column** of $A$; lowercase $a_i' \in \mathbb{R}^{1 \times n}$ is the **$i$-th row** of $A$. | We follow this capitalization convention systematically: $Ax = \sum_{j=1}^n A_j x_j$ (column view) vs. $(Ax)_i = a_i' x$ (row view). |
     | $B = [A_{B(1)} \cdots A_{B(m)}]$ | **Basis Matrix:** The $m \times m$ square submatrix formed by pasting the $m$ basic columns side by side. | Must be nonsingular ($\det(B) \ne 0 \iff \operatorname{rank}(B) = m$). |
     | $x_B = B^{-1}b$ | **Basic Variable Vector:** The unique values of the $m$ basic variables required to synthesize $b$. | Vector in $\mathbb{R}^m$. The full solution $x \in \mathbb{R}^n$ has $x_{B(i)} = (B^{-1}b)_i$ and $x_j = 0$ for $j \notin B$. |
     | **Adjacent Bases** | Two bases $B_1, B_2$ that share **$m - 1$ common basic indices** and differ in only 1 index. | One step (pivot) of the Simplex method swaps 1 column out of $B$ and 1 column in, moving between adjacent bases! |
 
     ---
 
-    ### 3.4 Worked Analytical Example *(Bertsimas & Tsitsiklis Examples 2.1 & 2.2, pp. 55–57)*
+    ### 3.4 Worked Analytical Example
 
     Consider a standard form polyhedron in $\mathbb{R}^7$ ($n = 7$ variables, $m = 4$ equality constraints) obtained by adding 4 slack variables $(x_4, x_5, x_6, x_7)$ to $x_1 + x_2 + 2x_3 \le 8$, $x_2 + 6x_3 \le 12$, $x_1 \le 4$, $x_2 \le 6$:
-    $$\underbrace{\begin{bmatrix}
+
+    $$
+    \underbrace{\begin{bmatrix}
     1 & 1 & 2 & 1 & 0 & 0 & 0 \\
     0 & 1 & 6 & 0 & 1 & 0 & 0 \\
     1 & 0 & 0 & 0 & 0 & 1 & 0 \\
     0 & 1 & 0 & 0 & 0 & 0 & 1
-    \end{bmatrix}}_{A \in \mathbb{R}^{4 \times 7}} x = \underbrace{\begin{bmatrix} 8 \\ 12 \\ 4 \\ 6 \end{bmatrix}}_{b \in \mathbb{R}^4}, \qquad x \ge 0$$
+    \end{bmatrix}}_{A \in \mathbb{R}^{4 \times 7}} x = \underbrace{\begin{bmatrix} 8 \\ 12 \\ 4 \\ 6 \end{bmatrix}}_{b \in \mathbb{R}^4}, \qquad x \ge 0
+    $$
 
-    * **Candidate Basis 1:** $\{B(1), B(2), B(3), B(4)\} = \{4, 5, 6, 7\}$ (the 4 slack columns).
-      - Nonbasic variables set to zero: $x_1 = x_2 = x_3 = 0$.
-      - Basis matrix: $B_1 = [A_4\; A_5\; A_6\; A_7] = I_4$ (invertible!).
-      - Basic variables: $x_B = B_1^{-1}b = (8, 12, 4, 6)' \ge 0$.
-      - Full vector: $x^{(1)} = (0, 0, 0, 8, 12, 4, 6)' \ge 0 \implies$ **Basic Feasible Solution (BFS)!**
+    **Candidate Basis 1:** $\{B(1), B(2), B(3), B(4)\} = \{4, 5, 6, 7\}$ (the 4 slack columns).
 
-    * **Candidate Basis 2 (Adjacent to Basis 1 — swap $A_4 \leftrightarrow A_3$):** $\{3, 5, 6, 7\}$.
-      - Nonbasic variables set to zero: $x_1 = x_2 = x_4 = 0$.
-      - System $B_2 x_B = b$:
-        - Row 1: $2x_3 = 8 \implies x_3 = 4$
-        - Row 2: $6x_3 + x_5 = 12 \implies 24 + x_5 = 12 \implies x_5 = -12 < 0$!
-        - Row 3: $x_6 = 4$; Row 4: $x_7 = 6$.
-      - Full vector: $x^{(2)} = (0, 0, 4, 0, -12, 4, 6)'$. Because $x_5 = -12 < 0$, this is a **Basic Solution, but INFEASIBLE**.
+    * Nonbasic variables set to zero: $x_1 = x_2 = x_3 = 0$.
+    * Basis matrix: $B_1 = [A_4\; A_5\; A_6\; A_7] = I_4$ (invertible!).
+    * Basic variables: $x_B = B_1^{-1}b = (8, 12, 4, 6)' \ge 0$.
+    * Full vector: $x^{(1)} = (0, 0, 0, 8, 12, 4, 6)' \ge 0 \implies$ **Basic Feasible Solution (BFS)!**
+
+    **Candidate Basis 2 (Adjacent to Basis 1 — swap $A_4 \leftrightarrow A_3$):** $\{3, 5, 6, 7\}$.
+
+    * Nonbasic variables set to zero: $x_1 = x_2 = x_4 = 0$.
+    * System $B_2 x_B = b$:
+    * Row 1: $2x_3 = 8 \implies x_3 = 4$
+    * Row 2: $6x_3 + x_5 = 12 \implies 24 + x_5 = 12 \implies x_5 = -12 < 0$!
+    * Row 3: $x_6 = 4$; Row 4: $x_7 = 6$.
+    * Full vector: $x^{(2)} = (0, 0, 4, 0, -12, 4, 6)'$. Because $x_5 = -12 < 0$, this is a **Basic Solution, but INFEASIBLE**.
     """)
     return
 
@@ -595,14 +764,14 @@ def sec3_theory(mo):
 def sec3_ui(mo):
     basis_dropdown_sec3 = mo.ui.dropdown(
         options={
-            "Basis {4, 5, 6, 7} (Slacks I_4) — B&T Ex. 2.1": [3, 4, 5, 6],
-            "Basis {3, 5, 6, 7} (Adjacent to {4,5,6,7}) — B&T Ex. 2.1": [2, 4, 5, 6],
+            "Basis {4, 5, 6, 7} (Slacks I_4)": [3, 4, 5, 6],
+            "Basis {3, 5, 6, 7} (Adjacent to {4,5,6,7})": [2, 4, 5, 6],
             "Basis {1, 2, 5, 6} (Optimal for max 3x1 + 2x2 + 4x3)": [0, 1, 4, 5],
-            "Basis {1, 2, 3, 7} (Degenerate BFS — B&T Ex. 2.5)": [0, 1, 2, 6],
+            "Basis {1, 2, 3, 7} (Degenerate BFS)": [0, 1, 2, 6],
             "Columns {1, 4, 5, 6} (Singular / Linearly Dependent!)": [0, 3, 4, 5],
         },
-        value="Basis {4, 5, 6, 7} (Slacks I_4) — B&T Ex. 2.1",
-        label="Select 4 columns of A in B&T Example 2.1 (m=4, n=7):"
+        value="Basis {4, 5, 6, 7} (Slacks I_4)",
+        label="Select 4 columns of A in the standard-form example (m=4, n=7):"
     )
     basis_dropdown_sec3
     return (basis_dropdown_sec3,)
@@ -610,7 +779,7 @@ def sec3_ui(mo):
 
 @app.cell
 def sec3_code(basis_dropdown_sec3, linprog, mo, np, pl, plt):
-    # Interactive Standard-Form Basis Explorer (B&T Example 2.1) + Column Geometry (B&T Fig. 2.8) + Gurobi VBasis
+    # Interactive Standard-Form Basis Explorer + Column Geometry + Optimal Basis
     A_ex21 = np.array([
         [1.0, 1.0, 2.0, 1.0, 0.0, 0.0, 0.0],
         [0.0, 1.0, 6.0, 0.0, 1.0, 0.0, 0.0],
@@ -641,11 +810,11 @@ def sec3_code(basis_dropdown_sec3, linprog, mo, np, pl, plt):
 
     # Solve with SciPy (HiGHS) and identify the optimal Simplex Basis (non-zero basic variables)
     _res3 = linprog(c_ex21, A_eq=A_ex21, b_eq=b_ex21, bounds=(0.0, None), method="highs")
-    gurobi_x_ex21 = _res3.x.copy()
-    gurobi_vbasis = [0 if val > 1e-7 else -1 for val in gurobi_x_ex21]
-    gurobi_opt_basis = [i + 1 for i, vb in enumerate(gurobi_vbasis) if vb == 0]
+    opt_x_ex21 = _res3.x.copy()
+    opt_vbasis = [0 if val > 1e-7 else -1 for val in opt_x_ex21]
+    opt_basis_ex21 = [i + 1 for i, vb in enumerate(opt_vbasis) if vb == 0]
 
-    # Plot Column Geometry (B&T Fig. 2.8, p. 56): m=2, n=4 in R^2
+    # Plot Column Geometry: m=2, n=4 in R^2
     fig3, ax3 = plt.subplots(figsize=(6.8, 4.4), dpi=110)
     _A_col2 = np.array([
         [2.0,  1.0, 1.0, -1.0],
@@ -676,7 +845,7 @@ def sec3_code(basis_dropdown_sec3, linprog, mo, np, pl, plt):
     ax3.set_ylim(-2.0, 3.8)
     ax3.set_xlabel("Requirement Row 1")
     ax3.set_ylabel("Requirement Row 2")
-    ax3.set_title("Column Geometry (B&T Fig. 2.8): Synthesizing $b$ from $m=2$ Columns")
+    ax3.set_title("Column Geometry: Synthesizing $b$ from $m=2$ Columns")
     ax3.legend(loc="upper left", fontsize=8)
     ax3.grid(True, alpha=0.3)
     plt.tight_layout()
@@ -685,8 +854,8 @@ def sec3_code(basis_dropdown_sec3, linprog, mo, np, pl, plt):
         "Variable": [f"x_{i+1}" for i in range(7)],
         "Role in Selected Set": ["Basic (in B)" if i in sel_cols else "Nonbasic (= 0)" for i in range(7)],
         "Selected Basis Value x": np.round(x_full, 3),
-        "Gurobi Optimal x*": np.round(gurobi_x_ex21, 3),
-        "Gurobi VBasis": ["Basic (0)" if vb == 0 else "Nonbasic LB (-1)" for vb in gurobi_vbasis],
+        "Optimal x*": np.round(opt_x_ex21, 3),
+        "Optimal Basis": ["Basic (0)" if vb == 0 else "Nonbasic LB (-1)" for vb in opt_vbasis],
     })
 
     mo.hstack([
@@ -695,7 +864,7 @@ def sec3_code(basis_dropdown_sec3, linprog, mo, np, pl, plt):
                 f"**Selected Columns:** $\\{{ {', '.join(f'A_{i+1}' for i in sel_cols)} \\}}$ "
                 f"| $\\text{{rank}}(B) = {rank_B}$, $\\det(B) = {det_B:.1f}$\n\n"
                 f"{status_str}\n\n"
-                f"**Gurobi Simplex Optimal Basis (`VBasis == 0`):** Columns ${gurobi_opt_basis}$ with $x^* = {np.round(gurobi_x_ex21, 2).tolist()}$"
+                f"**Optimal Basis:** Columns ${opt_basis_ex21}$ with $x^* = {np.round(opt_x_ex21, 2).tolist()}$"
             ),
             _df_ex21,
         ]),
@@ -705,41 +874,57 @@ def sec3_code(basis_dropdown_sec3, linprog, mo, np, pl, plt):
 
 
 @app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 4. Degeneracy
+    """)
+    return
+
+
+@app.cell(hide_code=True)
 def sec4_theory(mo):
     mo.md(r"""
-    ---
-    ## 4. Degeneracy
-    *Sources: Bertsimas & Tsitsiklis §2.4 (pp. 58–62); Dantzig §7-1 & Chapter 10 (pp. 228–237)*
-
     ### 4.1 Formal Theory: Overdetermined Corners & Colliding Bases
 
     At any basic solution in $\mathbb{R}^n$, we are required to have **$n$ linearly independent active constraints**. What happens if, purely by geometric coincidence or problem structure, **$n + 1$ or more constraints** pass through that exact same corner point?
 
-    #### **Definition 2.10 (Degeneracy in General Polyhedra)** *(B&T p. 58)*
+    #### **Definition of Degeneracy in General Polyhedra**
     A basic solution $x \in \mathbb{R}^n$ is said to be **degenerate** if **more than $n$** of the constraints defining the polyhedron are active at $x$:
-    $$|I(x)| = |\{i \mid a_i'x = b_i\}| > n$$
-    * **Geometric Picture (B&T Fig. 2.9):**
-      - In **2D ($n = 2$):** Two lines intersect at a normal (nondegenerate) corner. If **three or more lines** intersect at the exact same point, that basic solution is **degenerate**.
-      - In **3D ($n = 3$):** Three planes meet at the corner of a cube (nondegenerate). At the top apex of a 4-sided pyramid, **four planes** meet at a single point—making the apex a **degenerate** basic feasible solution.
 
-    #### **Definition 2.11 (Degeneracy in Standard Form Polyhedra)** *(B&T p. 59)*
+    $$
+    \lvert I(x) \rvert = \lvert \{i \mid a_i'x = b_i\} \rvert > n
+    $$
+
+    **Geometric Picture:**
+
+    * In **2D ($n = 2$):** Two lines intersect at a normal (nondegenerate) corner. If **three or more lines** intersect at the exact same point, that basic solution is **degenerate**.
+    * In **3D ($n = 3$):** Three planes meet at the corner of a cube (nondegenerate). At the top apex of a 4-sided pyramid, **four planes** meet at a single point—making the apex a **degenerate** basic feasible solution.
+
+    #### **Definition of Degeneracy in Standard Form Polyhedra**
+
     Consider the standard form polyhedron $P = \{x \in \mathbb{R}^n \mid Ax = b,\; x \ge 0\}$, where $A \in \mathbb{R}^{m \times n}$ has $\operatorname{rank}(A) = m$. Let $x \in \mathbb{R}^n$ be a basic solution. Then $x$ is **degenerate** if and only if **more than $n - m$ of the components of $x$ are zero**:
-    $$\#\{j \in \{1, \dots, n\} \mid x_j = 0\} > n - m \quad \Longleftrightarrow \quad \text{at least one basic variable } x_{B(i)} = (B^{-1}b)_i = 0$$
 
-    * **Why Definitions 2.10 and 2.11 Are Identical:**
-      In standard form, the $m$ equality constraints $Ax = b$ are always active at $x$. The only other constraints are the $n$ nonnegativity bounds $x_j \ge 0$, which are active whenever $x_j = 0$. Therefore:
-      $$\text{Total Active Constraints at } x = m + \#\{j \mid x_j = 0\}$$
-      Having more than $n$ active constraints ($m + \#\{j \mid x_j = 0\} > n$) is literally the same statement as $\#\{j \mid x_j = 0\} > n - m$! And since there are $n - m$ nonbasic variables (all equal to $0$), having more than $n - m$ zeros means **at least one of the $m$ basic variables in $x_B = B^{-1}b$ must also equal $0$**.
+    $$
+    \#\{j \in \{1, \dots, n\} \mid x_j = 0\} > n - m \quad \Longleftrightarrow \quad \text{at least one basic variable } x_{B(i)} = (B^{-1}b)_i = 0
+    $$
+
+    **Why Both Definitions Are Identical:** In standard form, the $m$ equality constraints $Ax = b$ are always active at $x$. The only other constraints are the $n$ nonnegativity bounds $x_j \ge 0$, which are active whenever $x_j = 0$. Therefore:
+
+    $$
+    \text{Total Active Constraints at } x = m + \#\{j \mid x_j = 0\}
+    $$
+
+    Having more than $n$ active constraints ($m + \#\{j \mid x_j = 0\} > n$) is literally the same statement as $\#\{j \mid x_j = 0\} > n - m$! And since there are $n - m$ nonbasic variables (all equal to $0$), having more than $n - m$ zeros means **at least one of the $m$ basic variables in $x_B = B^{-1}b$ must also equal $0$**.
 
     #### **Key Structural Consequences of Degeneracy**
-    1. **Many Bases $\longrightarrow$ One Geometric Corner (B&T p. 60, Fig. 2.11):**
-       When $x$ is a *nondegenerate* BFS, exactly $m$ variables are strictly positive ($x_j > 0$), so there is **only one possible basis** $B$ for $x$. When $x$ is *degenerate*, fewer than $m$ variables are strictly positive (say $k < m$ variables are positive, and $n - k > n - m$ variables are zero). Any way of choosing $m - k$ zero variables whose columns extend the $k$ positive columns to a full-rank $m \times m$ matrix $B$ defines a **different valid basis for the exact same point $x$**!
-    2. **Algorithmic Impact on Simplex (Dantzig Ch. 10, p. 228):**
-       When the Simplex method pivots at a degenerate BFS where some $x_{B(i)} = 0$, it may swap a zero basic variable out and a nonbasic variable in at level $0$—changing the basis matrix $B$ while staying at the **exact same geometric point $x$** (a step of length $\theta = 0$). Without anti-cycling rules (such as Bland's Rule or Dantzig's lexicographic/perturbation method), Simplex can theoretically cycle through multiple bases sitting at the same degenerate corner.
-    3. **Perturbation Splits Degeneracy (B&T Fig. 2.10; Dantzig §10-2):**
-       If we slightly perturb the right-hand side $b \gets b + \epsilon$, the extra hyperplanes that passed through the exact same point separate slightly, splitting the single degenerate corner into a cluster of distinct, closely spaced **nondegenerate** corners!
-    4. **Representation Dependence (B&T pp. 60–62, Fig. 2.12):**
-       Unlike being an extreme point, **degeneracy is not a purely geometric property**—it depends on how the polyhedron is algebraically represented (for example, adding a redundant inequality that touches an existing corner turns a nondegenerate corner into a degenerate one). However, within *standard form* representations of the same polyhedron, degeneracy of a BFS is invariant (B&T Exercise 2.19).
+
+    **1. Many Bases $\longrightarrow$ One Geometric Corner:** When $x$ is a *nondegenerate* BFS, exactly $m$ variables are strictly positive ($x_j > 0$), so there is **only one possible basis** $B$ for $x$. When $x$ is *degenerate*, fewer than $m$ variables are strictly positive (say $k < m$ variables are positive, and $n - k > n - m$ variables are zero). Any way of choosing $m - k$ zero variables whose columns extend the $k$ positive columns to a full-rank $m \times m$ matrix $B$ defines a **different valid basis for the exact same point $x$**!
+
+    **2. Algorithmic Impact on Simplex:** When the Simplex method pivots at a degenerate BFS where some $x_{B(i)} = 0$, it may swap a zero basic variable out and a nonbasic variable in at level $0$—changing the basis matrix $B$ while staying at the **exact same geometric point $x$** (a step of length $\theta = 0$). Without anti-cycling rules (such as Bland's Rule or perturbation/lexicographic rules), Simplex can theoretically cycle through multiple bases sitting at the same degenerate corner.
+
+    **3. Perturbation Splits Degeneracy:** If we slightly perturb the right-hand side $b \gets b + \epsilon$, the extra hyperplanes that passed through the exact same point separate slightly, splitting the single degenerate corner into a cluster of distinct, closely spaced **nondegenerate** corners!
+
+    **4. Representation Dependence:** Unlike being an extreme point, **degeneracy is not a purely geometric property**—it depends on how the polyhedron is algebraically represented (for example, adding a redundant inequality that touches an existing corner turns a nondegenerate corner into a degenerate one). However, within *standard form* representations of the same polyhedron, degeneracy of a BFS is invariant.
 
     ---
 
@@ -747,38 +932,39 @@ def sec4_theory(mo):
 
     | Concept | Nondegenerate Basic Feasible Solution | Degenerate Basic Feasible Solution |
     | :--- | :--- | :--- |
-    | **Active Constraints in $\mathbb{R}^n$** | Exactly $n$ constraints are active ($|I(x)| = n$). | Strictly more than $n$ constraints are active ($|I(x)| > n$). |
+    | **Active Constraints in $\mathbb{R}^n$** | Exactly $n$ constraints are active ($\lvert I(x) \rvert = n$). | Strictly more than $n$ constraints are active ($\lvert I(x) \rvert > n$). |
     | **Zero Variables in Standard Form** | Exactly $n - m$ variables are zero (only the nonbasic variables $x_N = 0$). | More than $n - m$ variables are zero (all $x_N = 0$ **plus** at least one basic variable $x_{B(i)} = 0$). |
     | **Basic Variable Values $x_B = B^{-1}b$** | Strictly positive: $x_B > 0$ ($x_{B(i)} > 0$ for all $i = 1, \dots, m$). | Nonnegative with zeros: $x_B \ge 0$, with $x_{B(i)} = 0$ for at least one $i$. |
     | **Basis $\leftrightarrow$ Extreme Point Map** | **Unique (1-to-1):** Only one basis $B$ produces $x$. | **Many-to-1:** Multiple distinct bases $B_1, B_2, \dots$ can produce the exact same $x$. |
 
     ---
 
-    ### 4.3 Worked Analytical Example *(Bertsimas & Tsitsiklis Examples 2.4 & 2.5, pp. 58–60)*
+    ### 4.3 Worked Analytical Example
 
-    Return to the 3D polyhedron ($n = 3$) from Example 2.4:
-    $$\begin{aligned}
+    Return to the 3D polyhedron ($n = 3$) from Section 3.4:
+
+    $$
+    \begin{aligned}
     \text{(1)}\quad x_1 + x_2 + 2x_3 &\le 8 \\
     \text{(2)}\quad x_2 + 6x_3 &\le 12 \\
     \text{(3)}\quad x_1 &\le 4 \\
     \text{(4)}\quad x_2 &\le 6 \\
     \text{(5, 6, 7)}\quad x_1, x_2, x_3 &\ge 0
-    \end{aligned}$$
+    \end{aligned}
+    $$
+
     In standard form $Ax = b, x \ge 0$ (adding slacks $x_4, x_5, x_6, x_7$), we have $n = 7$, $m = 4$, and $n - m = 3$.
 
-    1. **Nondegenerate BFS $x^{(A)} = (2, 6, 0)'$ in $\mathbb{R}^3$:**
-       - Plug into the 7 constraints: (1) $2+6+0 = 8$ **(active)**; (2) $6 + 0 = 6 < 12$; (3) $2 < 4$; (4) $6 = 6$ **(active)**; (5) $x_1=2>0$; (6) $x_2=6>0$; (7) $x_3=0$ **(active)**.
-       - Exactly $3 = n$ constraints are active! In $\mathbb{R}^7$, $x^{(A)} = (2, 6, 0, 0, 6, 2, 0)'$ has **3 zeros** ($= n-m$), and its **only** basis is $\{1, 2, 5, 6\}$.
+    **1. Nondegenerate BFS $x^{(A)} = (2, 6, 0)'$ in $\mathbb{R}^3$:**
 
-    2. **Degenerate BFS $x^{(B)} = (4, 0, 2)'$ in $\mathbb{R}^3$:**
-       - Plug into the 7 constraints:
-         - (1) $4 + 0 + 2(2) = 8$ **(active, $x_4 = 0$)**
-         - (2) $0 + 6(2) = 12$ **(active, $x_5 = 0$)**
-         - (3) $x_1 = 4$ **(active, $x_6 = 0$)**
-         - (4) $x_2 = 0 < 6$ *(inactive, $x_7 = 6 > 0$)*
-         - (6) $x_2 = 0$ **(active!)**
-       - **Four constraints** are active at $(4, 0, 2)'$ in $\mathbb{R}^3$! In standard form $\mathbb{R}^7$, $x^{(B)} = (4, 0, 2, 0, 0, 0, 6)'$ has **$4 > 3$ zeros** ($x_2 = x_4 = x_5 = x_6 = 0$).
-       - Every valid basis for $x^{(B)}$ must include the 3 positive columns $\{1, 3, 7\}$ ($x_1=4, x_3=2, x_7=6$) plus **any 1** of the 4 zero columns $\{2, 4, 5, 6\}$ that keeps $B$ invertible! As verified below, **all 4 bases** $\{1, 2, 3, 7\}$, $\{1, 3, 4, 7\}$, $\{1, 3, 5, 7\}$, and $\{1, 3, 6, 7\}$ are nonsingular and yield the **exact same BFS** $x^{(B)} = (4, 0, 2, 0, 0, 0, 6)'$!
+    * Plug into the 7 constraints: (1) $2+6+0 = 8$ **(active)**; (2) $6 + 0 = 6 < 12$; (3) $2 < 4$; (4) $6 = 6$ **(active)**; (5) $x_1=2>0$; (6) $x_2=6>0$; (7) $x_3=0$ **(active)**.
+    * Exactly $3 = n$ constraints are active! In $\mathbb{R}^7$, $x^{(A)} = (2, 6, 0, 0, 6, 2, 0)'$ has **3 zeros** ($= n-m$), and its **only** basis is $\{1, 2, 5, 6\}$.
+
+    **2. Degenerate BFS $x^{(B)} = (4, 0, 2)'$ in $\mathbb{R}^3$:**
+
+    * Constraint checks: (1) $4 + 0 + 2(2) = 8$ **(active, $x_4 = 0$)**; (2) $0 + 6(2) = 12$ **(active, $x_5 = 0$)**; (3) $x_1 = 4$ **(active, $x_6 = 0$)**; (4) $x_2 = 0 < 6$ *(inactive, $x_7 = 6 > 0$)*; (6) $x_2 = 0$ **(active!)**.
+    * **Four constraints** are active at $(4, 0, 2)'$ in $\mathbb{R}^3$! In standard form $\mathbb{R}^7$, $x^{(B)} = (4, 0, 2, 0, 0, 0, 6)'$ has **$4 > 3$ zeros** ($x_2 = x_4 = x_5 = x_6 = 0$).
+    * Every valid basis for $x^{(B)}$ must include the 3 positive columns $\{1, 3, 7\}$ ($x_1=4, x_3=2, x_7=6$) plus **any 1** of the 4 zero columns $\{2, 4, 5, 6\}$ that keeps $B$ invertible! As verified below, **all 4 bases** $\{1, 2, 3, 7\}$, $\{1, 3, 4, 7\}$, $\{1, 3, 5, 7\}$, and $\{1, 3, 6, 7\}$ are nonsingular and yield the **exact same BFS** $x^{(B)} = (4, 0, 2, 0, 0, 0, 6)'$!
     """)
     return
 
@@ -787,7 +973,7 @@ def sec4_theory(mo):
 def sec4_ui(mo):
     eps_degen_slider = mo.ui.slider(
         start=-0.6, stop=0.6, step=0.1, value=0.0,
-        label=r"Perturbation $\epsilon$ on 2D line 3 ($x_1 + 2x_2 \leq 4 + \epsilon$) to split a degenerate 2D corner (B&T Fig. 2.10):"
+        label=r"Perturbation $\epsilon$ on 2D line 3 ($x_1 + 2x_2 \leq 4 + \epsilon$) to split a degenerate 2D corner:"
     )
     eps_degen_slider
     return (eps_degen_slider,)
@@ -795,7 +981,7 @@ def sec4_ui(mo):
 
 @app.cell
 def sec4_code(A_ex21, b_ex21, eps_degen_slider, linprog, mo, np, pl, plt):
-    # Part A: Verify all bases in B&T Example 2.5 that collide at the Degenerate BFS x = (4, 0, 2, 0, 0, 0, 6)
+    # Part A: Verify all bases that collide at the Degenerate BFS x = (4, 0, 2, 0, 0, 0, 6)
     from itertools import combinations as _comb4
 
     target_degen_x = np.array([4.0, 0.0, 2.0, 0.0, 0.0, 0.0, 6.0])
@@ -817,7 +1003,7 @@ def sec4_code(A_ex21, b_ex21, eps_degen_slider, linprog, mo, np, pl, plt):
                     "Resulting x in R^7": str(np.round(_x_cand, 1).tolist()),
                 })
 
-    # Part B: 2D Visual Demonstration of Degeneracy & Perturbation (B&T Fig. 2.10) + Gurobi Solve
+    # Part B: 2D Visual Demonstration of Degeneracy & Perturbation + Optimal Solution
     # Three constraints in R^2 meeting at the exact same corner (2, 1) when eps = 0:
     # (1) x1 + x2 <= 3
     # (2) x1 <= 2
@@ -853,7 +1039,7 @@ def sec4_code(A_ex21, b_ex21, eps_degen_slider, linprog, mo, np, pl, plt):
         ax4.text(_pt[0] + 0.06, _pt[1] + 0.06, f"{_lbl}: ({_pt[0]:.2f},{_pt[1]:.2f})", fontsize=8.5, color=_col, weight="bold")
 
     ax4.scatter(*_opt_x4, s=160, marker="*", color="#f59e0b", edgecolor="black", zorder=8,
-                label=f"Gurobi Optimal Corner: ({_opt_x4[0]:.2f}, {_opt_x4[1]:.2f})")
+                label=f"Optimal Corner: ({_opt_x4[0]:.2f}, {_opt_x4[1]:.2f})")
 
     ax4.set_xlim(0.0, 3.5)
     ax4.set_ylim(0.0, 2.6)
@@ -871,12 +1057,12 @@ def sec4_code(A_ex21, b_ex21, eps_degen_slider, linprog, mo, np, pl, plt):
     mo.hstack([
         mo.vstack([
             mo.md(
-                f"### B&T Example 2.5 ($n=7, m=4$): **4 Distinct Bases** Colliding at $x = (4, 0, 2, 0, 0, 0, 6)'$\n"
+                f"### Standard-Form Degeneracy ($n=7, m=4$): **4 Distinct Bases** Colliding at $x = (4, 0, 2, 0, 0, 0, 6)'$\n"
                 f"Because $x$ has $4 > n-m=3$ zeros, choosing any 1 of the 4 zero variables ($x_2, x_4, x_5, x_6$) to join the 3 positive variables ($x_1=4, x_3=2, x_7=6$) forms a valid basis for the **exact same geometric corner**:"
             ),
             pl.DataFrame(colliding_bases_records),
             mo.md(
-                f"**2D Perturbation Status ($\\epsilon = {_eps:+.1f}$):** At Gurobi optimum $x^* = ({_opt_x4[0]:.2f}, {_opt_x4[1]:.2f})'$, "
+                f"**2D Perturbation Status ($\\epsilon = {_eps:+.1f}$):** At the optimal corner $x^* = ({_opt_x4[0]:.2f}, {_opt_x4[1]:.2f})'$, "
                 f"**{_active_count}** constraints are active in $\\mathbb{{R}}^2$ "
                 f"({'**DEGENERATE** ($>2$)' if _active_count > 2 else '**NONDEGENERATE** ($=2$)'})."
             ),
@@ -887,48 +1073,83 @@ def sec4_code(A_ex21, b_ex21, eps_degen_slider, linprog, mo, np, pl, plt):
 
 
 @app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 5. Existence of Extreme Points
+    """)
+    return
+
+
+@app.cell(hide_code=True)
 def sec5_theory(mo):
     mo.md(r"""
-    ---
-    ## 5. Existence of Extreme Points
-    *Sources: Bertsimas & Tsitsiklis §2.5 (pp. 62–65)*
-
     ### 5.1 Formal Theory: Lines vs. Corners & The Rank Condition
 
     Does every nonempty polyhedron have at least one extreme point? **No!**
     For example, in $\mathbb{R}^2$, the infinite horizontal strip $P_{\text{strip}} = \{(x_1, x_2) \in \mathbb{R}^2 \mid 0 \le x_2 \le 2\}$ is a perfectly valid polyhedron, yet it has **zero extreme points** (every point is the midpoint of a horizontal segment $(x_1 - \epsilon, x_2)$ and $(x_1 + \epsilon, x_2)$). Why? Because $P_{\text{strip}}$ contains an **infinite line**!
 
-    #### **Definition 2.12 (Polyhedron Containing a Line)** *(B&T p. 63)*
+    #### **Definition 2.12 (Polyhedron Containing a Line)**
     A polyhedron $P \subseteq \mathbb{R}^n$ **contains a line** if there exists a point $x \in P$ and a **nonzero** direction vector $d \in \mathbb{R}^n$ ($d \ne 0$) such that:
-    $$x + \lambda d \in P \quad \text{for ALL scalars } \lambda \in (-\infty, +\infty)$$
+
+    $$
+    x + \lambda d \in P \quad \text{for ALL scalars } \lambda \in (-\infty, +\infty)
+    $$
+
     > **Warning — Line vs. Half-Line (Ray):** Do not confuse containing a *two-way infinite line* ($\forall \lambda \in \mathbb{R}$) with being *unbounded* (containing a one-way ray $\forall \lambda \ge 0$). For instance, the positive quadrant $\{(x_1, x_2) \mid x_1 \ge 0, x_2 \ge 0\}$ is unbounded and contains rays, but it **does not contain any full line**, and it **does** have an extreme point at $(0, 0)'$!
 
-    #### **Theorem 2.6 (Necessary and Sufficient Conditions for Existence of Extreme Points)** *(B&T p. 63)*
+    #### **Theorem 2.6 (Necessary and Sufficient Conditions for Existence of Extreme Points)**
     Suppose the polyhedron $P = \{x \in \mathbb{R}^n \mid a_i'x \ge b_i,\; i = 1, \dots, m\}$ is nonempty. Then the following three statements are equivalent:
-    $$\boxed{\text{(a) } P \text{ has at least one extreme point} \;\Longleftrightarrow\; \text{(b) } P \text{ does NOT contain a line} \;\Longleftrightarrow\; \text{(c) } \operatorname{rank}(\{a_1, \dots, a_m\}) = n}$$
+
+    $$
+    \boxed{\text{(a) } P \text{ has at least one extreme point} \;\Longleftrightarrow\; \text{(b) } P \text{ does NOT contain a line} \;\Longleftrightarrow\; \text{(c) } \operatorname{rank}(\{a_1, \dots, a_m\}) = n}
+    $$
+
     *(where $\operatorname{rank}(\{a_1, \dots, a_m\}) = n$ means there exist $n$ linearly independent vectors among the constraint normals $a_1, \dots, a_m$, i.e., $\operatorname{rank}(A) = n$).*
 
-    #### **Constructive Proof of Theorem 2.6 *(B&T pp. 63–64, Figure 2.14 — The "Slide-Until-You-Hit-a-Wall" Procedure)***
-    1. **$\text{(b) No Line} \implies \text{(a) Extreme Point Exists}$:**
-       Start at any feasible point $x \in P$ with active set $I = \{i \mid a_i'x = b_i\}$. Let $k = \operatorname{rank}(\{a_i \mid i \in I\})$ be the number of linearly independent active constraints at $x$.
-       - If $k = n$, then $x$ is already a Basic Feasible Solution (and by Theorem 2.3, an extreme point)!
-       - If $k < n$, the active normals $\{a_i \mid i \in I\}$ span a subspace of dimension $k < n$, so there exists a nonzero direction $d \ne 0$ orthogonal to all currently active normals:
-         $$a_i'd = 0 \quad \text{for all } i \in I$$
-         Consider the line $y(\lambda) = x + \lambda d$ for $\lambda \in \mathbb{R}$. Notice that for every active constraint $i \in I$:
-         $$a_i'y(\lambda) = a_i'x + \lambda(a_i'd) = b_i + 0 = b_i \quad (\forall \lambda \in \mathbb{R})$$
-         So sliding along $d$ **never leaves any currently active wall**! Meanwhile, because $P$ contains no line, sliding along $+\lambda$ or $-\lambda$ cannot stay inside $P$ forever—it must eventually hit some previously inactive constraint $j \notin I$ at some threshold $\lambda^*$:
-         $$a_j'(x + \lambda^* d) = b_j \quad \text{while } x + \lambda^* d \in P$$
-         **Why does hitting wall $j$ strictly increase the rank of active constraints to $k + 1$?**
-         Because $j \notin I$ at $x$, we had $a_j'x > b_j$, whereas at $x + \lambda^* d$ we have $a_j'x + \lambda^*(a_j'd) = b_j$. Subtracting gives $\lambda^*(a_j'd) = b_j - a_j'x \ne 0 \implies \mathbf{a_j'd \ne 0}$. Since $d$ is orthogonal to every linear combination of $\{a_i \mid i \in I\}$ ($a_i'd = 0$) but is **not** orthogonal to $a_j$ ($a_j'd \ne 0$), $a_j$ **cannot be a linear combination of $\{a_i \mid i \in I\}$**! Thus the new point $x_{\text{new}} = x + \lambda^* d \in P$ has at least $k + 1$ linearly independent active constraints. Repeating at most $n - k$ steps reaches $n$ linearly independent active constraints—an extreme point!
-    2. **$\text{(a) Extreme Point Exists} \implies \text{(c) } \operatorname{rank}(A) = n$:**
-       By Theorem 2.3, an extreme point is a BFS, which requires $n$ linearly independent active normals in $\{a_1, \dots, a_m\}$.
-    3. **$\text{(c) } \operatorname{rank}(A) = n \implies \text{(b) No Line}$:**
-       Suppose $P$ contained a line $x + \lambda d$ ($\forall \lambda \in \mathbb{R}$) with $d \ne 0$. Then for every constraint $i = 1, \dots, m$:
-       $$a_i'x + \lambda(a_i'd) \ge b_i \quad \text{for all } \lambda \in (-\infty, +\infty)$$
-       If $a_i'd \ne 0$, sending $\lambda \to -\operatorname{sign}(a_i'd)\cdot \infty$ makes the left-hand side $-\infty < b_i$, violating feasibility! Thus we **must** have $a_i'd = 0$ for all $i = 1, \dots, m$ (i.e., $Ad = 0$). But since $A$ has $n$ linearly independent rows ($\operatorname{rank}(A) = n$), $Ad = 0 \implies d = 0$, a contradiction! $\blacksquare$
+    #### **Constructive Proof of Theorem 2.6 *(The "Slide-Until-You-Hit-a-Wall" Procedure)***
 
-    #### **Corollary 2.2 (Guaranteed Extreme Points for Bounded & Standard Form Polyhedra)** *(B&T p. 65)*
+    **1. $\text{(b) No Line} \implies \text{(a) Extreme Point Exists}$:**
+
+    Start at any feasible point $x \in P$ with active set $I = \{i \mid a_i'x = b_i\}$. Let $k = \operatorname{rank}(\{a_i \mid i \in I\})$ be the number of linearly independent active constraints at $x$.
+
+    * If $k = n$, then $x$ is already a Basic Feasible Solution (and by Theorem 2.3, an extreme point)!
+    * If $k < n$, the active normals $\{a_i \mid i \in I\}$ span a subspace of dimension $k < n$, so there exists a nonzero direction $d \ne 0$ orthogonal to all currently active normals:
+
+    $$
+    a_i'd = 0 \quad \text{for all } i \in I
+    $$
+
+    Consider the line $y(\lambda) = x + \lambda d$ for $\lambda \in \mathbb{R}$. Notice that for every active constraint $i \in I$:
+
+    $$
+    a_i'y(\lambda) = a_i'x + \lambda(a_i'd) = b_i + 0 = b_i \quad (\forall \lambda \in \mathbb{R})
+    $$
+
+    So sliding along $d$ **never leaves any currently active wall**! Meanwhile, because $P$ contains no line, sliding along $+\lambda$ or $-\lambda$ cannot stay inside $P$ forever—it must eventually hit some previously inactive constraint $j \notin I$ at some threshold $\lambda^*$:
+
+    $$
+    a_j'(x + \lambda^* d) = b_j \quad \text{while } x + \lambda^* d \in P
+    $$
+
+    **Why does hitting wall $j$ strictly increase the rank of active constraints to $k + 1$?** Because $j \notin I$ at $x$, we had $a_j'x > b_j$, whereas at $x + \lambda^* d$ we have $a_j'x + \lambda^*(a_j'd) = b_j$. Subtracting gives $\lambda^*(a_j'd) = b_j - a_j'x \ne 0 \implies \mathbf{a_j'd \ne 0}$. Since $d$ is orthogonal to every linear combination of $\{a_i \mid i \in I\}$ ($a_i'd = 0$) but is **not** orthogonal to $a_j$ ($a_j'd \ne 0$), $a_j$ **cannot be a linear combination of $\{a_i \mid i \in I\}$**! Thus the new point $x_{\text{new}} = x + \lambda^* d \in P$ has at least $k + 1$ linearly independent active constraints. Repeating at most $n - k$ steps reaches $n$ linearly independent active constraints—an extreme point!
+
+    **2. $\text{(a) Extreme Point Exists} \implies \text{(c) } \operatorname{rank}(A) = n$:**
+
+    By Theorem 2.3, an extreme point is a BFS, which requires $n$ linearly independent active normals in $\{a_1, \dots, a_m\}$.
+
+    **3. $\text{(c) } \operatorname{rank}(A) = n \implies \text{(b) No Line}$:**
+
+    Suppose $P$ contained a line $x + \lambda d$ ($\forall \lambda \in \mathbb{R}$) with $d \ne 0$. Then for every constraint $i = 1, \dots, m$:
+
+    $$
+    a_i'x + \lambda(a_i'd) \ge b_i \quad \text{for all } \lambda \in (-\infty, +\infty)
+    $$
+
+    If $a_i'd \ne 0$, sending $\lambda \to -\operatorname{sign}(a_i'd)\cdot \infty$ makes the left-hand side $-\infty < b_i$, violating feasibility! Thus we **must** have $a_i'd = 0$ for all $i = 1, \dots, m$ (i.e., $Ad = 0$). But since $A$ has $n$ linearly independent rows ($\operatorname{rank}(A) = n$), $Ad = 0 \implies d = 0$, a contradiction! $\blacksquare$
+
+    #### **Corollary 2.2 (Guaranteed Extreme Points for Bounded & Standard Form Polyhedra)**
     **Every nonempty bounded polyhedron** and **every nonempty polyhedron in standard form** $P = \{x \in \mathbb{R}^n \mid Ax = b,\; x \ge 0\}$ has **at least one extreme point (BFS)**.
+
     * *Why?* A bounded polyhedron obviously cannot contain an infinite line. And a standard-form polyhedron is a subset of the nonnegative orthant $\{x \in \mathbb{R}^n \mid I_n x \ge 0\}$, whose $n$ normal vectors are the standard basis vectors $e_1, \dots, e_n$ ($\operatorname{rank}(I_n) = n$), so no line $x + \lambda d$ ($\lambda \in \mathbb{R}$) can stay nonnegative for both $\lambda \to +\infty$ and $\lambda \to -\infty$!
 
     ---
@@ -943,18 +1164,14 @@ def sec5_theory(mo):
 
     ---
 
-    ### 5.3 Worked Analytical Example *(Constructive Path to an Extreme Point — B&T Fig. 2.14)*
+    ### 5.3 Worked Analytical Example *(Constructive Path to an Extreme Point)*
 
     Consider $P = \{x \in \mathbb{R}^2 \mid x_1 \ge 0,\; x_2 \ge 0,\; x_1 + 2x_2 \ge 2,\; -x_1 + x_2 \ge -3\}$.
     Start at the strictly interior point $x^{(0)} = (2, 2)' \in P$:
-    1. **At $x^{(0)} = (2, 2)'$ ($k = 0$ active constraints):**
-       - $I(x^{(0)}) = \emptyset$. Pick any nonzero direction, say $d^{(0)} = (-1, 0)'$.
-       - Move along $x^{(0)} + \lambda d^{(0)} = (2 - \lambda, 2)'$ for $\lambda > 0$: it hits $x_1 = 0$ (Constraint 1) at $\lambda^* = 2$, reaching $x^{(1)} = (0, 2)'$.
-    2. **At $x^{(1)} = (0, 2)'$ ($k = 1$ active constraint, $I = \{1\}$ with $a_1 = (1, 0)'$):**
-       - Choose $d^{(1)} \ne 0$ orthogonal to $a_1 = (1, 0)'$: $d^{(1)} = (0, -1)'$ ($a_1'd^{(1)} = 0$).
-       - Move along $x^{(1)} + \lambda d^{(1)} = (0, 2 - \lambda)'$ for $\lambda > 0$: Constraint 1 stays active ($x_1 = 0$), and at $\lambda^* = 1$ we hit Constraint 3 ($x_1 + 2x_2 = 0 + 2(1) = 2$) at $x^{(2)} = (0, 1)'$.
-    3. **At $x^{(2)} = (0, 1)'$ ($k = 2 = n$ active constraints, $I = \{1, 3\}$):**
-       - Normals $a_1 = (1, 0)'$ and $a_3 = (1, 2)'$ are linearly independent ($\operatorname{rank} = 2 = n$). We have constructively reached the **Extreme Point / BFS $x^{(2)} = (0, 1)'$**!
+
+    1. **At $x^{(0)} = (2, 2)'$ ($k = 0$ active constraints):** $I(x^{(0)}) = \emptyset$. Pick any nonzero direction, say $d^{(0)} = (-1, 0)'$. Move along $x^{(0)} + \lambda d^{(0)} = (2 - \lambda, 2)'$ for $\lambda > 0$: it hits $x_1 = 0$ (Constraint 1) at $\lambda^* = 2$, reaching $x^{(1)} = (0, 2)'$.
+    2. **At $x^{(1)} = (0, 2)'$ ($k = 1$ active constraint, $I = \{1\}$ with $a_1 = (1, 0)'$):** Choose $d^{(1)} \ne 0$ orthogonal to $a_1 = (1, 0)'$: $d^{(1)} = (0, -1)'$ ($a_1'd^{(1)} = 0$). Move along $x^{(1)} + \lambda d^{(1)} = (0, 2 - \lambda)'$ for $\lambda > 0$: Constraint 1 stays active ($x_1 = 0$), and at $\lambda^* = 1$ we hit Constraint 3 ($x_1 + 2x_2 = 0 + 2(1) = 2$) at $x^{(2)} = (0, 1)'$.
+    3. **At $x^{(2)} = (0, 1)'$ ($k = 2 = n$ active constraints, $I = \{1, 3\}$):** Normals $a_1 = (1, 0)'$ and $a_3 = (1, 2)'$ are linearly independent ($\operatorname{rank} = 2 = n$). We have constructively reached the **Extreme Point / BFS $x^{(2)} = (0, 1)'$**!
     """)
     return
 
@@ -971,7 +1188,7 @@ def sec5_code(mo, np, pl, plt):
     b_sec5 = np.array([0.0, 0.0, 2.0, -3.0])
 
     def constructive_find_extreme_point(A, b, x_start):
-        """Exact implementation of Theorem 2.6 constructive proof (B&T p. 63-64, Fig. 2.14)."""
+        """Exact implementation of Theorem 2.6 constructive proof (Slide-Until-You-Hit-a-Wall)."""
         x_curr = x_start.astype(float).copy()
         n_dim = A.shape[1]
         path = [x_curr.copy()]
@@ -1018,7 +1235,7 @@ def sec5_code(mo, np, pl, plt):
 
     fig5, (ax5_left, ax5_right) = plt.subplots(1, 2, figsize=(10.5, 4.2), dpi=110)
 
-    # Left panel: Line-free polyhedron (rank(A) = 2) + Constructive Path (Fig. 2.14)
+    # Left panel: Line-free polyhedron (rank(A) = 2) + Constructive Path
     _x5g = np.linspace(-0.3, 4.8, 300)
     ax5_left.axvline(0.0, color="#64748b", lw=1.6, label="1: $x_1 = 0$")
     ax5_left.axhline(0.0, color="#64748b", lw=1.6, ls="--", label="2: $x_2 = 0$")
@@ -1042,7 +1259,7 @@ def sec5_code(mo, np, pl, plt):
     ax5_left.set_ylim(-0.4, 3.8)
     ax5_left.set_xlabel("$x_1$")
     ax5_left.set_ylabel("$x_2$")
-    ax5_left.set_title("Theorem 2.6 (Fig. 2.14): $\\mathrm{rank}(A)=2=n$\nNo Line $\\Rightarrow$ Constructive Slide Finds BFS $x^{(2)}$")
+    ax5_left.set_title("Theorem 2.6: $\\mathrm{rank}(A)=2=n$\nNo Line $\\Rightarrow$ Constructive Slide Finds BFS $x^{(2)}$")
     ax5_left.legend(loc="upper right", fontsize=7.5)
     ax5_left.grid(True, alpha=0.3)
 
@@ -1056,7 +1273,7 @@ def sec5_code(mo, np, pl, plt):
     ax5_right.set_ylim(-2.5, 3.5)
     ax5_right.set_xlabel("$x_1$")
     ax5_right.set_ylabel("$x_2$")
-    ax5_right.set_title("Rank-Deficient $\\mathrm{rank}(A)=1 < n=2$ (Fig. 2.13):\nContains Line $d=(1,1)' \\Rightarrow$ ZERO Extreme Points!")
+    ax5_right.set_title("Rank-Deficient $\\mathrm{rank}(A)=1 < n=2$:\nContains Line $d=(1,1)' \\Rightarrow$ ZERO Extreme Points!")
     ax5_right.legend(loc="upper left", fontsize=7.5)
     ax5_right.grid(True, alpha=0.3)
     plt.tight_layout()
@@ -1069,48 +1286,65 @@ def sec5_code(mo, np, pl, plt):
 
 
 @app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 6. Optimality of Extreme Points (The Fundamental Theorem of LP)
+    """)
+    return
+
+
+@app.cell(hide_code=True)
 def sec6_theory(mo):
     mo.md(r"""
-    ---
-    ## 6. Optimality of Extreme Points (The Fundamental Theorem of LP)
-    *Sources: Bertsimas & Tsitsiklis §2.6 (pp. 65–67); Dantzig §7-1 & §7-2 (pp. 152–159)*
-
     ### 6.1 Formal Theory: Why We Only Need to Search Corner Points
 
     We now arrive at the crowning geometric result of Linear Programming: even though a polyhedron $P$ contains an uncountably infinite continuum of points, **if $P$ has at least one extreme point and the optimal cost is finite, the global optimum is guaranteed to be achieved at an extreme point (BFS)**.
 
-    #### **Theorem 2.7 (Optimality of Extreme Points)** *(B&T p. 65, Figure 2.15)*
+    #### **Theorem 2.7 (Optimality of Extreme Points)**
     Consider the linear programming problem of minimizing $c'x$ over a polyhedron $P = \{x \in \mathbb{R}^n \mid Ax \ge b\}$. Suppose that $P$ has at least one extreme point and that there exists an optimal solution. Then **there exists an optimal solution which is an extreme point of $P$**.
 
-    * **Proof *(The "Optimal Face $Q$" Argument — B&T pp. 65–66, Fig. 2.15)*:**
-      1. Let $v = \min_{x \in P} c'x$ be the optimal objective value, and define the **set of all optimal solutions** (the *optimal face*):
-         $$Q = \{x \in \mathbb{R}^n \mid Ax \ge b,\; c'x = v\}$$
-      2. By assumption, $Q$ is nonempty. Because $Q$ is defined by linear constraints, $Q$ is itself a **polyhedron**! Furthermore, since $Q \subseteq P$ and $P$ contains no lines (Theorem 2.6), $Q$ cannot contain a line either. Therefore, by Theorem 2.6, **$Q$ has at least one extreme point $x^*$**.
-      3. **We claim that $x^*$ (an extreme point of $Q$) is ALSO an extreme point of $P$:**
-         Suppose, for contradiction, that $x^*$ were *not* an extreme point of $P$. Then there exist $y, z \in P$ ($y \ne x^*, z \ne x^*$) and $\lambda \in (0, 1)$ such that:
-         $$x^* = \lambda y + (1 - \lambda)z$$
-         Evaluate the linear objective $c'(\cdot)$ on both sides:
-         $$v = c'x^* = \lambda c'y + (1 - \lambda)c'z$$
-         Since $y, z \in P$ are feasible and $v$ is the minimum cost over all of $P$, we have **$c'y \ge v$** and **$c'z \ge v$**. Because $\lambda \in (0, 1)$ is strictly between $0$ and $1$, the weighted average $\lambda c'y + (1-\lambda)c'z$ can equal $v$ **if and only if both $c'y = v$ and $c'z = v$**!
-         But $c'y = v$ and $c'z = v$ mean that **$y \in Q$ and $z \in Q$**, which contradicts the fact that $x^*$ is an extreme point of $Q$!
-         Therefore, $x^*$ must be an extreme point of $P$, and since $x^* \in Q$, $x^*$ is an optimal extreme point of $P$. $\blacksquare$
+    **Proof *(The "Optimal Face $Q$" Argument)*:**
+
+    1. Let $v = \min_{x \in P} c'x$ be the optimal objective value, and define the **set of all optimal solutions** (the *optimal face*):
+
+    $$
+    Q = \{x \in \mathbb{R}^n \mid Ax \ge b,\; c'x = v\}
+    $$
+
+    2. By assumption, $Q$ is nonempty. Because $Q$ is defined by linear constraints, $Q$ is itself a **polyhedron**! Furthermore, since $Q \subseteq P$ and $P$ contains no lines (Theorem 2.6), $Q$ cannot contain a line either. Therefore, by Theorem 2.6, **$Q$ has at least one extreme point $x^*$**.
+    3. **We claim that $x^*$ (an extreme point of $Q$) is ALSO an extreme point of $P$:** Suppose, for contradiction, that $x^*$ were *not* an extreme point of $P$. Then there exist $y, z \in P$ ($y \ne x^*, z \ne x^*$) and $\lambda \in (0, 1)$ such that:
+
+    $$
+    x^* = \lambda y + (1 - \lambda)z
+    $$
+
+    Evaluate the linear objective $c'(\cdot)$ on both sides:
+
+    $$
+    v = c'x^* = \lambda c'y + (1 - \lambda)c'z
+    $$
+
+    Since $y, z \in P$ are feasible and $v$ is the minimum cost over all of $P$, we have **$c'y \ge v$** and **$c'z \ge v$**. Because $\lambda \in (0, 1)$ is strictly between $0$ and $1$, the weighted average $\lambda c'y + (1-\lambda)c'z$ can equal $v$ **if and only if both $c'y = v$ and $c'z = v$**! But $c'y = v$ and $c'z = v$ mean that **$y \in Q$ and $z \in Q$**, which contradicts the fact that $x^*$ is an extreme point of $Q$! Therefore, $x^*$ must be an extreme point of $P$, and since $x^* \in Q$, $x^*$ is an optimal extreme point of $P$. $\blacksquare$
 
     ---
 
-    #### **Theorem 2.8 (Finite Optimal Cost Guarantees an Optimal Extreme Point)** *(B&T p. 66)*
+    #### **Theorem 2.8 (Finite Optimal Cost Guarantees an Optimal Extreme Point)**
     Consider minimizing $c'x$ over a polyhedron $P$ that has at least one extreme point. Then **either the optimal cost is equal to $-\infty$, or there exists an extreme point which is optimal**.
 
-    * **Proof *(Cost-Nonincreasing Rank-Ascent)*:**
-      Assume the optimal cost is finite ($> -\infty$). Take any feasible point $x \in P$ with $k < n$ linearly independent active constraints ($I = \{i \mid a_i'x = b_i\}$). We construct a new feasible point $y \in P$ with **strictly higher active rank ($\ge k + 1$)** and **no worse cost ($c'y \le c'x$)**:
-      1. Since $k < n$, choose a nonzero vector $d \ne 0$ orthogonal to all active normals ($a_i'd = 0$ for all $i \in I$). By replacing $d$ with $-d$ if necessary, ensure that **$c'd \le 0$**.
-      2. **Case 1 ($c'd < 0$):** Move along the ray $y(\lambda) = x + \lambda d$ for $\lambda > 0$. If the entire half-line stayed in $P$, then $c'y(\lambda) = c'x + \lambda(c'd) \to -\infty$ as $\lambda \to \infty$, contradicting that the optimal cost is finite! Thus the ray must exit $P$ at some $\lambda^* > 0$, hitting a new linearly independent constraint $j \notin I$ at $y = x + \lambda^* d$ with $c'y < c'x$ and active rank $\ge k + 1$.
-      3. **Case 2 ($c'd = 0$):** Move along the line $y(\lambda) = x + \lambda d$ ($\lambda \in \mathbb{R}$). Since $P$ contains no line, it hits a new linearly independent constraint $j \notin I$ at some $\lambda^*$, giving $y = x + \lambda^* d$ with $c'y = c'x$ and active rank $\ge k + 1$.
-      4. Repeating at most $n - k$ steps produces a Basic Feasible Solution (extreme point) $w \in P$ with $c'w \le c'x$.
-      5. By Corollary 2.1, $P$ has only a **finite number** of extreme points $\{w^1, \dots, w^r\}$. Let $w^* \in \arg\min_{i=1,\dots,r} c'w^i$ be the best among these finitely many extreme points. Since every $x \in P$ has some extreme point $w^i$ with $c'w^i \le c'x$, we have $c'w^* \le c'w^i \le c'x$ for **all** $x \in P$! Thus $w^*$ is globally optimal. $\blacksquare$
+    **Proof *(Cost-Nonincreasing Rank-Ascent)*:**
 
-    #### **Corollary 2.3 (No "Unattained Finite Infimum" in LP)** *(B&T p. 67)*
+    Assume the optimal cost is finite ($> -\infty$). Take any feasible point $x \in P$ with $k < n$ linearly independent active constraints ($I = \{i \mid a_i'x = b_i\}$). We construct a new feasible point $y \in P$ with **strictly higher active rank ($\ge k + 1$)** and **no worse cost ($c'y \le c'x$)**:
+
+    1. Since $k < n$, choose a nonzero vector $d \ne 0$ orthogonal to all active normals ($a_i'd = 0$ for all $i \in I$). By replacing $d$ with $-d$ if necessary, ensure that **$c'd \le 0$**.
+    2. **Case 1 ($c'd < 0$):** Move along the ray $y(\lambda) = x + \lambda d$ for $\lambda > 0$. If the entire half-line stayed in $P$, then $c'y(\lambda) = c'x + \lambda(c'd) \to -\infty$ as $\lambda \to \infty$, contradicting that the optimal cost is finite! Thus the ray must exit $P$ at some $\lambda^* > 0$, hitting a new linearly independent constraint $j \notin I$ at $y = x + \lambda^* d$ with $c'y < c'x$ and active rank $\ge k + 1$.
+    3. **Case 2 ($c'd = 0$):** Move along the line $y(\lambda) = x + \lambda d$ ($\lambda \in \mathbb{R}$). Since $P$ contains no line, it hits a new linearly independent constraint $j \notin I$ at some $\lambda^*$, giving $y = x + \lambda^* d$ with $c'y = c'x$ and active rank $\ge k + 1$.
+    4. Repeating at most $n - k$ steps produces a Basic Feasible Solution (extreme point) $w \in P$ with $c'w \le c'x$.
+    5. By Corollary 2.1, $P$ has only a **finite number** of extreme points $\{w^1, \dots, w^r\}$. Let $w^* \in \arg\min_{i=1,\dots,r} c'w^i$ be the best among these finitely many extreme points. Since every $x \in P$ has some extreme point $w^i$ with $c'w^i \le c'x$, we have $c'w^* \le c'w^i \le c'x$ for **all** $x \in P$! Thus $w^*$ is globally optimal. $\blacksquare$
+
+    #### **Corollary 2.3 (No "Unattained Finite Infimum" in LP)**
     Consider minimizing $c'x$ over **any** nonempty polyhedron $P$. Then either the optimal cost is $-\infty$, or there exists an optimal solution $x^* \in P$.
-    * **Contrast with Nonlinear Optimization (B&T p. 67):** In nonlinear optimization, $\min_{x \ge 1} \frac{1}{x}$ has a finite infimum of $0 > -\infty$, yet **no optimal solution exists** (since $1/x > 0$ for every finite $x \ge 1$). Theorem 2.8 and Corollary 2.3 prove that a linear program with finite infimum **always attains** its minimum!
+
+    * **Contrast with Nonlinear Optimization:** In nonlinear optimization, $\min_{x \ge 1} \frac{1}{x}$ has a finite infimum of $0 > -\infty$, yet **no optimal solution exists** (since $1/x > 0$ for every finite $x \ge 1$). Theorem 2.8 and Corollary 2.3 prove that a linear program with finite infimum **always attains** its minimum!
 
     ---
 
@@ -1127,14 +1361,9 @@ def sec6_theory(mo):
     ### 6.3 Worked Analytical Example *(Multiple Optimal Solutions vs. Unique Extreme Point Optimum)*
 
     Consider the bounded polygon $P \subset \mathbb{R}^2$ with 4 extreme points: $w^1 = (0, 0)'$, $w^2 = (2, 0)'$, $w^3 = (3, 1)'$, $w^4 = (0, 4)'$.
-    1. **Unique Optimal Extreme Point:** Minimize $c'x = -x_1 - 2x_2$.
-       - Evaluate $c'w^i$ at the 4 extreme points:
-         - $c'w^1 = 0$, $c'w^2 = -2$, $c'w^3 = -3 - 2 = -5$, $c'w^4 = 0 - 8 = -8$.
-       - Unique optimal set: $Q = \{w^4\} = \{(0, 4)'\}$ with $v = -8$.
-    2. **Multiple Optimal Solutions (Optimal Edge $Q$ — B&T Fig. 2.15):** Minimize $c'x = -x_1 - x_2$ (parallel to constraint $x_1 + x_2 \le 4$!).
-       - Evaluate $c'w^i$:
-         - $c'w^1 = 0$, $c'w^2 = -2$, **$c'w^3 = -4$**, **$c'w^4 = -4$**.
-       - Here the optimal set $Q = \{x \in P \mid -x_1 - x_2 = -4\} = \{\lambda(3, 1)' + (1-\lambda)(0, 4)' \mid \lambda \in [0, 1]\}$ is the **entire edge** connecting $w^3$ and $w^4$! And as Theorem 2.7 proves, the **extreme points of $Q$** are $w^3 = (3, 1)'$ and $w^4 = (0, 4)'$—which are **extreme points of $P$**!
+
+    * **1. Unique Optimal Extreme Point:** Minimize $c'x = -x_1 - 2x_2$. Evaluate $c'w^i$ at the 4 extreme points: $c'w^1 = 0$, $c'w^2 = -2$, $c'w^3 = -3 - 2 = -5$, $c'w^4 = 0 - 8 = -8$. Unique optimal set: $Q = \{w^4\} = \{(0, 4)'\}$ with $v = -8$.
+    * **2. Multiple Optimal Solutions (Optimal Edge $Q$):** Minimize $c'x = -x_1 - x_2$ (parallel to constraint $x_1 + x_2 \le 4$!). Evaluate $c'w^i$: $c'w^1 = 0$, $c'w^2 = -2$, **$c'w^3 = -4$**, **$c'w^4 = -4$**. Here the optimal set $Q = \{x \in P \mid -x_1 - x_2 = -4\} = \{\lambda(3, 1)' + (1-\lambda)(0, 4)' \mid \lambda \in [0, 1]\}$ is the **entire edge** connecting $w^3$ and $w^4$! And as Theorem 2.7 proves, the **extreme points of $Q$** are $w^3 = (3, 1)'$ and $w^4 = (0, 4)'$—which are **extreme points of $P$**!
     """)
     return
 
@@ -1157,7 +1386,7 @@ def sec6_code(A_sec2, b_sec2, linprog, mo, np, pl, plt, theta_deg_slider):
 
     # Solve min c'x over P (from Section 2) using SciPy HiGHS
     _res6 = linprog(c_sec6, A_ub=-A_sec2, b_ub=-b_sec2, bounds=(None, None), method="highs")
-    gurobi_opt6 = _res6.x.copy()
+    opt_x6 = _res6.x.copy()
     v_opt6 = float(_res6.fun)
 
     # Evaluate c'w^i at all 4 extreme points of P
@@ -1217,8 +1446,8 @@ def sec6_code(A_sec2, b_sec2, linprog, mo, np, pl, plt, theta_deg_slider):
                  fontsize=8.5, weight="bold" if _is_opt else "normal",
                  color="#15803d" if _is_opt else "#334155")
 
-    ax6.scatter(*gurobi_opt6, s=180, marker="*", color="#f59e0b", edgecolor="black", zorder=9,
-                label=f"Gurobi Simplex Extreme Point Optimum: ({gurobi_opt6[0]:.1f}, {gurobi_opt6[1]:.1f})")
+    ax6.scatter(*opt_x6, s=180, marker="*", color="#f59e0b", edgecolor="black", zorder=9,
+                label=f"Optimal Extreme Point: ({opt_x6[0]:.1f}, {opt_x6[1]:.1f})")
 
     ax6.set_xlim(-0.6, 4.2)
     ax6.set_ylim(-0.6, 4.6)
@@ -1239,9 +1468,9 @@ def sec6_code(A_sec2, b_sec2, linprog, mo, np, pl, plt, theta_deg_slider):
         fig6,
         mo.vstack([
             mo.md(
-                f"### Finite Extreme-Point Enumeration vs. Gurobi\n"
+                f"### Finite Extreme-Point Enumeration vs. Optimal Solution\n"
                 f"- **Cost Vector:** $c = ({c_sec6[0]:.3f}, {c_sec6[1]:.3f})'$\n"
-                f"- **Gurobi Optimal Corner:** $x^* = ({gurobi_opt6[0]:.1f}, {gurobi_opt6[1]:.1f})'$ with $v^* = {v_opt6:.4f}$\n"
+                f"- **Optimal Corner:** $x^* = ({opt_x6[0]:.1f}, {opt_x6[1]:.1f})'$ with $v^* = {v_opt6:.4f}$\n"
                 f"- **Number of Optimal Extreme Points in $Q$:** **{int(np.sum(_opt_ext_mask))}** "
                 f"{'(Multiple optima along an edge—yet extreme points of $Q$ are extreme points of $P$!)' if np.sum(_opt_ext_mask) > 1 else '(Unique vertex optimum!)'}"
             ),
@@ -1252,45 +1481,83 @@ def sec6_code(A_sec2, b_sec2, linprog, mo, np, pl, plt, theta_deg_slider):
 
 
 @app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## 7. Representation of Bounded Polyhedra* (Convex Hull of Extreme Points)
+    """)
+    return
+
+
+@app.cell(hide_code=True)
 def sec7_theory(mo):
     mo.md(r"""
-    ---
-    ## 7. Representation of Bounded Polyhedra* (Convex Hull of Extreme Points)
-    *Sources: Bertsimas & Tsitsiklis §2.7 (pp. 67–70); Dantzig §7-1 & Chapter 23 (Decomposition Principle)*
-
     ### 7.1 Formal Theory: External ($\mathcal{H}$) vs. Internal ($\mathcal{V}$) Representation
 
     Up to now, we have described every polyhedron **from the outside** by listing its bounding hyperplanes/halfspaces:
-    $$P = \{x \in \mathbb{R}^n \mid Ax \ge b\} \qquad \text{(Inequality / }\mathcal{H}\text{-Representation)}$$
+
+    $$
+    P = \{x \in \mathbb{R}^n \mid Ax \ge b\} \qquad \text{(Inequality / }\mathcal{H}\text{-Representation)}
+    $$
+
     Theorem 2.9 establishes a dual geometric perspective: any nonempty **bounded** polyhedron (polytope) can be completely described **from the inside** as the set of all convex combinations of its extreme points!
 
-    #### **Theorem 2.9 (Minkowski-Weyl / Krein-Milman Representation of Bounded Polyhedra)** *(B&T p. 68, Figure 2.16)*
+    #### **Theorem 2.9 (Minkowski-Weyl / Krein-Milman Representation of Bounded Polyhedra)**
     **A nonempty and bounded polyhedron $P \subset \mathbb{R}^n$ is the convex hull of its extreme points:**
-    $$\boxed{P = \operatorname{conv}(\{x^1, x^2, \dots, x^K\}) = \left\{ \sum_{i=1}^K \mu_i x^i \;\middle|\; \mu_i \ge 0 \text{ for all } i,\; \sum_{i=1}^K \mu_i = 1 \right\}}$$
+
+    $$
+    \boxed{P = \operatorname{conv}(\{x^1, x^2, \dots, x^K\}) = \left\{ \sum_{i=1}^K \mu_i x^i \;\middle|\; \mu_i \ge 0 \text{ for all } i,\; \sum_{i=1}^K \mu_i = 1 \right\}}
+    $$
+
     where $\{x^1, \dots, x^K\}$ is the finite set of extreme points of $P$.
 
-    #### **Constructive Proof by Induction on Dimension *(B&T pp. 68–70, Figure 2.16 — "Ray-Shooting from an Extreme Point")***
-    * **Part 1 ($\operatorname{conv}(\{x^1, \dots, x^K\}) \subseteq P$):** Since each extreme point $x^i \in P$ and $P$ is a convex set (Theorem 2.1(b)), every convex combination of $x^1, \dots, x^K$ belongs to $P$ (Theorem 2.1(c)).
-    * **Part 2 ($P \subseteq \operatorname{conv}(\{x^1, \dots, x^K\})$):** Define $\dim(P)$ as the smallest integer $k$ such that $P$ is contained in a $k$-dimensional affine subspace $S \subseteq \mathbb{R}^n$. We induct on $k = \dim(P)$:
-      1. **Base Case ($k = 0$):** A $0$-dimensional polyhedron consists of a single point $P = \{x^1\}$, which is trivially an extreme point of $P$ ($z = 1 \cdot x^1$).
-      2. **Induction Hypothesis:** Assume every nonempty bounded polyhedron of dimension $\le k - 1$ is the convex hull of its extreme points.
-      3. **Inductive Step ($\dim(P) = k$):** Take any point $z \in P$. If $z$ is already an extreme point of $P$, we are done. Otherwise, pick **any extreme point $y$ of $P$** (guaranteed to exist by Corollary 2.2 because $P$ is nonempty and bounded!) and shoot a half-line starting at $z$ in the direction away from $y$:
-         $$u(\lambda) = z + \lambda(z - y), \qquad \lambda \ge 0$$
-      4. **Ray Hits a Boundary Face $Q$:** Because $P$ is **bounded**, this half-line cannot stay inside $P$ for arbitrarily large $\lambda$. There is a largest scalar $\lambda^* > 0$ right where the ray is about to exit $P$ and violate some constraint $a_{i^*}'x \ge b_{i^*}$. At $\lambda = \lambda^*$, the boundary hit-point
-         $$u = z + \lambda^*(z - y) \in P \quad \text{satisfies} \quad a_{i^*}'u = b_{i^*} \quad \text{and} \quad a_{i^*}'(z - y) < 0$$
-      5. **Dimension Reduction ($\dim(Q) \le k - 1$):** Define the boundary face $Q = \{x \in P \mid a_{i^*}'x = b_{i^*}\}$. Because $z, y \in S$ (the $k$-dimensional affine subspace containing $P$) and $a_{i^*}'(z - y) < 0$, the new equality constraint $a_{i^*}'x = b_{i^*}$ is linearly independent of the $n - k$ equations defining $S$. Thus $Q$ lies in an affine subspace of dimension **$k - 1$**, so $\dim(Q) \le k - 1$!
-      6. **Apply Induction Hypothesis to $Q$:** Since $u \in Q$ and $\dim(Q) \le k - 1$, $u$ can be written as a convex combination of the extreme points $y^1, \dots, y^r$ of $Q$:
-         $$u = \sum_{i=1}^r \lambda_i y^i, \qquad \lambda_i \ge 0,\quad \sum_{i=1}^r \lambda_i = 1$$
-         *(Moreover, every extreme point $y^i$ of $Q$ has $n$ linearly independent active constraints from $P$, so every $y^i$ is also an extreme point of $P$!)*
-      7. **Reconstruct $z$:** From $u = z + \lambda^*(z - y) = (1 + \lambda^*)z - \lambda^* y$, solve directly for $z$:
-         $$\boxed{z = \frac{u + \lambda^* y}{1 + \lambda^*} = \left(\frac{\lambda^*}{1 + \lambda^*}\right) y + \sum_{i=1}^r \left(\frac{\lambda_i}{1 + \lambda^*}\right) y^i}$$
-         Notice that all coefficients $\frac{\lambda^*}{1 + \lambda^*}$ and $\frac{\lambda_i}{1 + \lambda^*}$ are nonnegative, and their sum is:
-         $$\frac{\lambda^*}{1 + \lambda^*} + \sum_{i=1}^r \frac{\lambda_i}{1 + \lambda^*} = \frac{\lambda^* + 1}{1 + \lambda^*} = 1$$
-         Thus $z$ is a convex combination of extreme points of $P$! $\blacksquare$
+    #### **Constructive Proof by Induction on Dimension *(Ray-Shooting from an Extreme Point)***
+
+    **Part 1 ($\operatorname{conv}(\{x^1, \dots, x^K\}) \subseteq P$):** Since each extreme point $x^i \in P$ and $P$ is a convex set (Theorem 2.1(b)), every convex combination of $x^1, \dots, x^K$ belongs to $P$ (Theorem 2.1(c)).
+
+    **Part 2 ($P \subseteq \operatorname{conv}(\{x^1, \dots, x^K\})$):** Define $\dim(P)$ as the smallest integer $k$ such that $P$ is contained in a $k$-dimensional affine subspace $S \subseteq \mathbb{R}^n$. We induct on $k = \dim(P)$:
+
+    * **Base Case ($k = 0$):** A $0$-dimensional polyhedron consists of a single point $P = \{x^1\}$, which is trivially an extreme point of $P$ ($z = 1 \cdot x^1$).
+    * **Induction Hypothesis:** Assume every nonempty bounded polyhedron of dimension $\le k - 1$ is the convex hull of its extreme points.
+    * **Inductive Step ($\dim(P) = k$):** Take any point $z \in P$. If $z$ is already an extreme point of $P$, we are done. Otherwise, pick **any extreme point $y$ of $P$** (guaranteed to exist by Corollary 2.2 because $P$ is nonempty and bounded!) and shoot a half-line starting at $z$ in the direction away from $y$:
+
+    $$
+    u(\lambda) = z + \lambda(z - y), \qquad \lambda \ge 0
+    $$
+
+    **Ray Hits a Boundary Face $Q$:** Because $P$ is **bounded**, this half-line cannot stay inside $P$ for arbitrarily large $\lambda$. There is a largest scalar $\lambda^* > 0$ right where the ray is about to exit $P$ and violate some constraint $a_{i^*}'x \ge b_{i^*}$. At $\lambda = \lambda^*$, the boundary hit-point
+
+    $$
+    u = z + \lambda^*(z - y) \in P \quad \text{satisfies} \quad a_{i^*}'u = b_{i^*} \quad \text{and} \quad a_{i^*}'(z - y) < 0
+    $$
+
+    **Dimension Reduction ($\dim(Q) \le k - 1$):** Define the boundary face $Q = \{x \in P \mid a_{i^*}'x = b_{i^*}\}$. Because $z, y \in S$ (the $k$-dimensional affine subspace containing $P$) and $a_{i^*}'(z - y) < 0$, the new equality constraint $a_{i^*}'x = b_{i^*}$ is linearly independent of the $n - k$ equations defining $S$. Thus $Q$ lies in an affine subspace of dimension **$k - 1$**, so $\dim(Q) \le k - 1$!
+
+    **Apply Induction Hypothesis to $Q$:** Since $u \in Q$ and $\dim(Q) \le k - 1$, $u$ can be written as a convex combination of the extreme points $y^1, \dots, y^r$ of $Q$:
+
+    $$
+    u = \sum_{i=1}^r \lambda_i y^i, \qquad \lambda_i \ge 0,\quad \sum_{i=1}^r \lambda_i = 1
+    $$
+
+    *(Moreover, every extreme point $y^i$ of $Q$ has $n$ linearly independent active constraints from $P$, so every $y^i$ is also an extreme point of $P$!)*
+
+    **Reconstruct $z$:** From $u = z + \lambda^*(z - y) = (1 + \lambda^*)z - \lambda^* y$, solve directly for $z$:
+
+    $$
+    \boxed{z = \frac{u + \lambda^* y}{1 + \lambda^*} = \left(\frac{\lambda^*}{1 + \lambda^*}\right) y + \sum_{i=1}^r \left(\frac{\lambda_i}{1 + \lambda^*}\right) y^i}
+    $$
+
+    Notice that all coefficients $\frac{\lambda^*}{1 + \lambda^*}$ and $\frac{\lambda_i}{1 + \lambda^*}$ are nonnegative, and their sum is:
+
+    $$
+    \frac{\lambda^*}{1 + \lambda^*} + \sum_{i=1}^r \frac{\lambda_i}{1 + \lambda^*} = \frac{\lambda^* + 1}{1 + \lambda^*} = 1
+    $$
+
+    Thus $z$ is a convex combination of extreme points of $P$! $\blacksquare$
 
     > **Why This Theorem Is So Powerful in Optimization:**
+    >
     > 1. **Instant Intuition for LP Optimality:** On a bounded polyhedron $P = \operatorname{conv}(\{x^1, \dots, x^K\})$, any feasible point is $x = \sum_{i=1}^K \mu_i x^i$ ($\mu_i \ge 0, \sum \mu_i = 1$), so its objective value is $c'x = \sum_{i=1}^K \mu_i (c'x^i)$—a weighted average of the corner costs $\{c'x^1, \dots, c'x^K\}$. The minimum of a weighted average is always achieved by placing weight $\mu_{i^*} = 1$ on the single minimum-cost corner $x^{i^*}$!
-    > 2. **Foundation of Column Generation & Dantzig-Wolfe Decomposition (B&T Ch. 6; Dantzig Ch. 23):** In large-scale optimization, Dantzig-Wolfe decomposition replaces $Ax \ge b$ with convex combinations of extreme points $x = \sum_{i=1}^K \mu_i x^i$!
+    > 2. **Foundation of Column Generation & Dantzig-Wolfe Decomposition:** In large-scale optimization, Dantzig-Wolfe decomposition replaces $Ax \ge b$ with convex combinations of extreme points $x = \sum_{i=1}^K \mu_i x^i$!
 
     ---
 
@@ -1306,25 +1573,31 @@ def sec7_theory(mo):
 
     ### 7.3 Worked Analytical Examples
 
-    #### **Example A: Bertsimas & Tsitsiklis Example 2.6 (p. 70) in $\mathbb{R}^3$**
-    Consider the 3D simplex $P = \{(x_1, x_2, x_3) \in \mathbb{R}^3 \mid x_1 + x_2 + x_3 \le 1,\; x_1, x_2, x_3 \ge 0\}$.
-    It has $K = 4$ extreme points:
-    $$x^1 = (1, 0, 0)', \quad x^2 = (0, 1, 0)', \quad x^3 = (0, 0, 1)', \quad x^4 = (0, 0, 0)'$$
-    Take any point $z = (1/3,\, 1/3,\, 1/4)' \in P$ (since $1/3 + 1/3 + 1/4 = 11/12 \le 1$). Its unique representation as a convex combination of $x^1, x^2, x^3, x^4$ is:
-    $$z = \frac{1}{3}\begin{bmatrix} 1 \\ 0 \\ 0 \end{bmatrix} + \frac{1}{3}\begin{bmatrix} 0 \\ 1 \\ 0 \end{bmatrix} + \frac{1}{4}\begin{bmatrix} 0 \\ 0 \\ 1 \end{bmatrix} + \frac{1}{12}\begin{bmatrix} 0 \\ 0 \\ 0 \end{bmatrix}, \qquad \text{where } \frac{1}{3} + \frac{1}{3} + \frac{1}{4} + \frac{1}{12} = 1.$$
+    #### **Example A: The 3D Simplex in $\mathbb{R}^3$**
+    Consider the 3D simplex $P = \{(x_1, x_2, x_3) \in \mathbb{R}^3 \mid x_1 + x_2 + x_3 \le 1,\; x_1, x_2, x_3 \ge 0\}$. It has $K = 4$ extreme points:
 
-    #### **Example B: Step-by-Step Ray-Shooting Construction (B&T Fig. 2.16) in $\mathbb{R}^2$**
+    $$
+    x^1 = (1, 0, 0)', \quad x^2 = (0, 1, 0)', \quad x^3 = (0, 0, 1)', \quad x^4 = (0, 0, 0)'
+    $$
+
+    Take any point $z = (1/3,\, 1/3,\, 1/4)' \in P$ (since $1/3 + 1/3 + 1/4 = 11/12 \le 1$). Its unique representation as a convex combination of $x^1, x^2, x^3, x^4$ is:
+
+    $$
+    z = \frac{1}{3}\begin{bmatrix} 1 \\ 0 \\ 0 \end{bmatrix} + \frac{1}{3}\begin{bmatrix} 0 \\ 1 \\ 0 \end{bmatrix} + \frac{1}{4}\begin{bmatrix} 0 \\ 0 \\ 1 \end{bmatrix} + \frac{1}{12}\begin{bmatrix} 0 \\ 0 \\ 0 \end{bmatrix}, \qquad \text{where } \frac{1}{3} + \frac{1}{3} + \frac{1}{4} + \frac{1}{12} = 1.
+    $$
+
+    #### **Example B: Step-by-Step Ray-Shooting Construction in $\mathbb{R}^2$**
     In our 2D polygon $P$ with extreme points $w^1=(0,0)'$, $w^2=(2,0)'$, $w^3=(3,1)'$, $w^4=(0,4)'$, take the interior point $z = (1.5, 1.0)'$ and anchor extreme point $y = w^1 = (0, 0)'$:
+
     1. **Direction vector:** $z - y = (1.5, 1.0)'$.
     2. **Ray:** $u(\lambda) = (1.5, 1.0)' + \lambda(1.5, 1.0)' = (1 + \lambda)(1.5, 1.0)'$.
-    3. **Hit boundary wall:** Check when $u(\lambda)$ hits $x_1 + x_2 = 4$ (Constraint 3) vs. $x_1 - x_2 = 2$ (Constraint 4):
-       - Constraint 3: $1.5(1+\lambda) + 1.0(1+\lambda) = 2.5(1+\lambda) = 4 \implies 1 + \lambda = 1.6 \implies \mathbf{\lambda^* = 0.6}$.
-       - Constraint 4: $1.5(1+\lambda) - 1.0(1+\lambda) = 0.5(1+\lambda) = 2 \implies 1 + \lambda = 4.0 \implies \lambda = 3.0$.
-       - The ray hits Constraint 3 first at $\lambda^* = 0.6$, giving boundary point $u = 1.6 \times (1.5, 1.0)' = \mathbf{(2.4, 1.6)'}$ on the edge $[w^3, w^4]$!
-    4. **Express $u = (2.4, 1.6)'$ on the 1D edge joining $w^3 = (3, 1)'$ and $w^4 = (0, 4)'$:**
-       Since $2.4 = 0.8(3) + 0.2(0)$ and $1.6 = 0.8(1) + 0.2(4)$, we have $u = 0.8 w^3 + 0.2 w^4$.
+    3. **Hit boundary wall:** Check when $u(\lambda)$ hits $x_1 + x_2 = 4$ (Constraint 3) vs. $x_1 - x_2 = 2$ (Constraint 4): Constraint 3 gives $1.5(1+\lambda) + 1.0(1+\lambda) = 2.5(1+\lambda) = 4 \implies 1 + \lambda = 1.6 \implies \mathbf{\lambda^* = 0.6}$, while Constraint 4 gives $0.5(1+\lambda) = 2 \implies 1 + \lambda = 4.0 \implies \lambda = 3.0$. The ray hits Constraint 3 first at $\lambda^* = 0.6$, giving boundary point $u = 1.6 \times (1.5, 1.0)' = \mathbf{(2.4, 1.6)'}$ on the edge $[w^3, w^4]$!
+    4. **Express $u = (2.4, 1.6)'$ on the 1D edge joining $w^3 = (3, 1)'$ and $w^4 = (0, 4)'$:** Since $2.4 = 0.8(3) + 0.2(0)$ and $1.6 = 0.8(1) + 0.2(4)$, we have $u = 0.8 w^3 + 0.2 w^4$.
     5. **Reconstruct $z$ via Theorem 2.9 formula ($1 + \lambda^* = 1.6$):**
-       $$z = \frac{0.6}{1.6} w^1 + \frac{0.8}{1.6} w^3 + \frac{0.2}{1.6} w^4 = \mathbf{0.375\, w^1 + 0.500\, w^3 + 0.125\, w^4} = 0.375\begin{bmatrix}0\\0\end{bmatrix} + 0.5\begin{bmatrix}3\\1\end{bmatrix} + 0.125\begin{bmatrix}0\\4\end{bmatrix} = \begin{bmatrix}1.5\\1.0\end{bmatrix}!$$
+
+    $$
+    z = \frac{0.6}{1.6} w^1 + \frac{0.8}{1.6} w^3 + \frac{0.2}{1.6} w^4 = \mathbf{0.375\, w^1 + 0.500\, w^3 + 0.125\, w^4} = 0.375\begin{bmatrix}0\\0\end{bmatrix} + 0.5\begin{bmatrix}3\\1\end{bmatrix} + 0.125\begin{bmatrix}0\\4\end{bmatrix} = \begin{bmatrix}1.5\\1.0\end{bmatrix}!
+    $$
     """)
     return
 
@@ -1341,7 +1614,7 @@ def sec7_ui(mo):
             "w^4 = (0, 4)": 3,
         },
         value="w^1 = (0, 0)",
-        label="Anchor Extreme Point $y$ for Ray-Shooting (Fig. 2.16):"
+        label="Anchor Extreme Point $y$ for Ray-Shooting:"
     )
     mo.hstack([z1_slider, z2_slider, anchor_y_dropdown])
     return anchor_y_dropdown, z1_slider, z2_slider
@@ -1360,7 +1633,7 @@ def sec7_code(
     z1_slider,
     z2_slider,
 ):
-    # Interactive Theorem 2.9 Ray-Shooting Decomposition (B&T Fig. 2.16) + Gurobi Master Convex-Hull LP
+    # Interactive Theorem 2.9 Ray-Shooting Decomposition + Master Convex-Hull LP
     W_ext = np.array([
         [0.0, 0.0],  # w^1
         [2.0, 0.0],  # w^2
@@ -1422,7 +1695,7 @@ def sec7_code(
     ax7.set_ylim(-0.5, 4.5)
     ax7.set_xlabel("$x_1$")
     ax7.set_ylabel("$x_2$")
-    ax7.set_title("Theorem 2.9 (B&T Fig. 2.16): Constructive Ray-Shooting Convex Hull Representation")
+    ax7.set_title("Theorem 2.9: Constructive Ray-Shooting Convex Hull Representation")
     ax7.legend(loc="upper right", fontsize=8)
     ax7.grid(True, alpha=0.3)
     plt.tight_layout()
@@ -1450,17 +1723,17 @@ def sec7_code(
 
 
 @app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    # Module 02: The Simplex Method and Duality Theory
+    """)
+    return
+
+
+@app.cell(hide_code=True)
 def header_mod2(mo):
     mo.md(r"""
-    ---
-    # Module 02: The Simplex Method and Duality Theory
     ### *Algorithmic Edge-Walking, Tableau Mechanics, and the Economic & Computational Power of Duality*
-
-    ---
-
-    > **Primary Textbook Sources:**
-    > - **Bertsimas, D., & Tsitsiklis, J. N.** — *Introduction to Linear Optimization*, **Chapter 3: The Simplex Method** (§3.1–§3.5, pp. 81–119) and **Chapter 4: Duality Theory** (§4.1–§4.6, pp. 139–174).
-    > - **Dantzig, G. B.** — *Linear Programming and Extensions*, **Chapters 5, 8, 9, 10: Simplex Theory & Extensions** and **Chapters 6 & 12: Duality & The Price Concept**.
 
     ---
 
@@ -1468,8 +1741,16 @@ def header_mod2(mo):
 
     In **Module 01**, we proved that an optimal solution to any linear program always exists at an extreme point (BFS) of the feasible polyhedron. But how do we find that optimal corner efficiently when there are millions of possibilities? And once found, what is the economic and computational value of the resulting solution?
 
-    - **Part 1 (The Simplex Method):** Turns polyhedral geometry into an active algorithm. By walking along 1-dimensional edges from corner to adjacent corner in cost-reducing directions, Simplex systematically traverses the boundary of the feasible polyhedron, reaching optimality in typically $2m$ to $3m$ pivots.
-    - **Part 2 (Duality Theory):** Uncovers the twin optimization problem hiding behind every linear program. Duality provides instant certificates of global optimality (zero duality gap), marginal shadow prices ($\frac{\partial v^*}{\partial b_i} = p_i^*$), computational speedups when $m \gg n$, and the mathematical backbone of modern Branch-and-Bound and Stochastic Programming.
+    * **Part 1 (The Simplex Method):** Turns polyhedral geometry into an active algorithm. By walking along 1-dimensional edges from corner to adjacent corner in cost-reducing directions, Simplex systematically traverses the boundary of the feasible polyhedron, reaching optimality in typically $2m$ to $3m$ pivots.
+    * **Part 2 (Duality Theory):** Uncovers the twin optimization problem hiding behind every linear program. Duality provides instant certificates of global optimality (zero duality gap), marginal shadow prices ($\frac{\partial v^*}{\partial b_i} = p_i^*$), computational speedups when $m \gg n$, and the mathematical backbone of modern Branch-and-Bound and Stochastic Programming.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Module 02 — Topic 1: The Simplex Method (Mechanics, Geometry & Pivoting Algorithms)
     """)
     return
 
@@ -1477,13 +1758,9 @@ def header_mod2(mo):
 @app.cell(hide_code=True)
 def sec9_theory(mo):
     mo.md(r"""
-    ---
-    ## Module 02 — Topic 1: The Simplex Method (Mechanics, Geometry & Pivoting Algorithms)
-    *Sources: Bertsimas & Tsitsiklis Chapter 3 (§3.1–§3.5, pp. 81–119); Dantzig Chapters 5, 8, 9, 10*
-
     ### 1.1 The Geometric & Intuitive Foundation: Edge-Walking on Polyhedra
 
-    In Chapter 2, we proved the **Fundamental Theorem of Linear Programming**: if a standard form LP has an optimal solution, at least one **Basic Feasible Solution (BFS)** (extreme point / corner) is optimal.
+    In **Module 01**, we proved the **Fundamental Theorem of Linear Programming**: if a standard form LP has an optimal solution, at least one **Basic Feasible Solution (BFS)** (extreme point / corner) is optimal.
     However, a polyhedron can have up to $\binom{n}{m}$ basic solutions. For a modest LP with $n = 100$ variables and $m = 20$ constraints, $\binom{100}{20} \approx 5.35 \times 10^{20}$ candidates—far too many to enumerate!
 
     The **Simplex Method**, invented by George Dantzig in 1947, does not search blindly. Instead, it starts at an initial BFS and **walks along 1-dimensional edges of the polyhedron from one BFS to an adjacent BFS, strictly improving (or maintaining) the objective value at every step**, until no further improvement is possible.
@@ -1493,103 +1770,258 @@ def sec9_theory(mo):
     ### 1.2 Algebraic Derivation of Simplex: Directions, Reduced Costs, and Optimality
 
     Consider a standard form linear program:
-    $$\begin{aligned}
+
+    $$
+    \begin{aligned}
     \min_{x \in \mathbb{R}^n} \quad & c'x \\
     \text{subject to} \quad & Ax = b \\
     & x \ge 0
-    \end{aligned}$$
+    \end{aligned}
+    $$
+
     where $A \in \mathbb{R}^{m \times n}$ has full row rank $m$.
 
-    #### **1. Moving Along Feasible Basic Directions *(B&T §3.1, pp. 83–85)***
+    #### **1. Moving Along Feasible Basic Directions**
     Suppose we currently stand at a basic feasible solution $x \in \mathbb{R}^n$ associated with basis matrix $B = [A_{B(1)} \cdots A_{B(m)}] \in \mathbb{R}^{m \times m}$. Partition variables into basic variables $x_B = B^{-1}b \ge 0$ and nonbasic variables $x_N = 0$.
 
-    To move away from $x$ towards an adjacent corner, we choose **one nonbasic variable $x_j$** ($j \notin B$) and increase it from $0$ to a positive step size $\theta > 0$, while keeping all other nonbasic variables locked at zero ($x_k = 0$ for all nonbasic $k \ne j$).
-    How must the basic variables $x_B$ adjust so that the equality constraints $Ax = b$ remain satisfied?
-    $$A(x + \theta d) = b \iff Ax + \theta Ad = b \iff Ad = 0$$
-    Partitioning the direction vector $d \in \mathbb{R}^n$ into basic components $d_B \in \mathbb{R}^m$ and nonbasic components $d_N$:
-    $$B d_B + A_j d_j = 0 \quad \xrightarrow{\text{with } d_j = 1} \quad B d_B + A_j = 0 \iff \boxed{d_B = -B^{-1}A_j}$$
-    The complete vector $d \in \mathbb{R}^n$, defined by:
-    $$d_k = \begin{cases} (-B^{-1}A_j)_i & \text{if } k = B(i) \text{ is the } i\text{-th basic variable} \\ 1 & \text{if } k = j \text{ (the entering variable)} \\ 0 & \text{if } k \notin B \text{ and } k \ne j \end{cases}$$
-    is called the **$j$-th Basic Direction** *(B&T p. 84)*.
+    To move away from $x$ along a direction $d \in \mathbb{R}^n$ ($x_{\text{new}} = x + \theta d$ with $\theta > 0$), we increase **one nonbasic variable $x_j$** ($j \notin B$) at unit rate ($d_j = 1$) and keep all other nonbasic variables locked at zero ($d_k = 0$ for $k \notin B,\, k \ne j$).
 
-    #### **2. The Reduced Cost: How Much Does the Objective Change? *(B&T §3.1, pp. 85–86)***
+    To stay feasible ($A(x + \theta d) = b$), since $Ax = b$ and $\theta > 0$, we need $Ad = 0$. Splitting $Ad = \sum_{k=1}^n A_k d_k$ into the basic columns $B$ and the single active nonbasic column $A_j$ (all other $d_k = 0$):
+
+    $$
+    Ad = B d_B + A_j d_j = 0 \quad \xrightarrow{d_j = 1} \quad B d_B = -A_j \iff \boxed{d_B = -B^{-1}A_j}
+    $$
+
+    Putting all components together gives the **$j$-th Basic Direction** $d \in \mathbb{R}^n$:
+
+    $$
+    d_k = \begin{cases} (-B^{-1}A_j)_i & \text{if } k = B(i) \text{ is the } i\text{-th basic variable} \\ 1 & \text{if } k = j \text{ (the entering variable)} \\ 0 & \text{if } k \notin B \text{ and } k \ne j \end{cases}
+    $$
+
+    In block-matrix form (partitioned into basic $B$, entering $j$, and remaining nonbasic $N \setminus \{j\}$):
+
+    $$
+    x_{\text{new}} = x + \theta d = \begin{bmatrix} x_B \\ 0 \\ 0 \end{bmatrix} + \theta \begin{bmatrix} -B^{-1}A_j \\ 1 \\ 0 \end{bmatrix} = \begin{bmatrix} x_B - \theta B^{-1}A_j \\ \theta \\ 0 \end{bmatrix} \implies A x_{\text{new}} = \begin{bmatrix} B & A_j & A_{N \setminus \{j\}} \end{bmatrix} \begin{bmatrix} x_B - \theta B^{-1}A_j \\ \theta \\ 0 \end{bmatrix} = B x_B - \theta A_j + \theta A_j = b
+    $$
+
+    #### **2. The Reduced Cost: How Much Does the Objective Change?**
     If we step along the basic direction $d$ by an amount $\theta > 0$, the objective function changes at the rate $c'd$:
-    $$\text{Rate of Cost Change} = c'd = c_B' d_B + c_j d_j = c_j - c_B' B^{-1} A_j$$
+
+    $$
+    \text{Rate of Cost Change} = c'd = c_B' d_B + c_j d_j = c_j - c_B' B^{-1} A_j
+    $$
+
     We define this rate as the **Reduced Cost** of variable $x_j$:
-    $$\boxed{\bar{c}_j \equiv c_j - c_B' B^{-1} A_j = c_j - p' A_j}$$
-    where $p' \equiv c_B' B^{-1} \in \mathbb{R}^{1 \times m}$ is the vector of **Simplex Multipliers** (which will become the **Dual Variables** in Section 10!).
 
-    * **Key Property:** For every **basic variable** $x_{B(i)}$, its reduced cost is **identically zero**:
-      $$\bar{c}_{B(i)} = c_{B(i)} - c_B' B^{-1} A_{B(i)} = c_{B(i)} - c_B' e_i = c_{B(i)} - c_{B(i)} = 0$$
-    * **Physical Meaning:** $\bar{c}_j$ is the net marginal cost of producing one unit of activity $j$:
-      - $c_j$ = direct objective cost of activity $j$.
-      - $p'A_j = \sum_{i=1}^m p_i a_{ij}$ = imputed economic value of the $m$ resources consumed by activity $j$.
-      - If $\bar{c}_j < 0$, activity $j$ delivers more value than the resources it consumes $\implies$ **increasing $x_j$ decreases total cost!**
+    $$
+    \boxed{\bar{c}_j \equiv c_j - c_B' B^{-1} A_j = c_j - p' A_j}
+    $$
 
-    #### **3. Theorem 3.1 (Simplex Optimality Conditions) *(B&T p. 87)***
+    where $p' \equiv c_B' B^{-1} \in \mathbb{R}^{1 \times m}$ is the vector of **Simplex Multipliers** (which will become the **Dual Variables** in Topic 2!).
+
+    **Key Property:** For every **basic variable** $x_{B(i)}$, its reduced cost is **identically zero**:
+
+    $$
+    \bar{c}_{B(i)} = c_{B(i)} - c_B' B^{-1} A_{B(i)} = c_{B(i)} - c_B' e_i = c_{B(i)} - c_{B(i)} = 0
+    $$
+
+    **Physical Meaning:** $\bar{c}_j$ is the net marginal cost of producing one unit of activity $j$:
+
+    * $c_j$ = direct objective cost of activity $j$.
+    * $p'A_j = \sum_{i=1}^m p_i a_{ij}$ = imputed economic value of the $m$ resources consumed by activity $j$.
+    * If $\bar{c}_j < 0$, activity $j$ delivers more value than the resources it consumes $\implies$ **increasing $x_j$ decreases total cost!**
+
+    #### **3. Theorem 3.1 (Simplex Optimality Conditions)**
     Consider a basic feasible solution $x$ with basis matrix $B$ and reduced cost vector $\bar{c} = c' - c_B' B^{-1} A$:
-    1. **If $\bar{c} \ge 0$ (all reduced costs are nonnegative), then $x$ is an OPTIMAL SOLUTION.**
-       - *Proof:* For any feasible vector $y \ge 0$ with $Ay = b$:
-         $$c'y - c'x = c'(y - x) = (c' - c_B' B^{-1}A)(y - x) + c_B' B^{-1}(Ay - Ax) = \bar{c}'(y - x) + c_B' B^{-1}(b - b) = \bar{c}'(y - x)$$
-         Since $x_N = 0$ at the current BFS, $y_j - x_j = y_j \ge 0$ for all nonbasic $j$, and $\bar{c}_B = 0$ for all basic variables. Therefore:
-         $$c'y - c'x = \sum_{j \notin B} \bar{c}_j y_j \ge 0 \implies c'y \ge c'x \quad \forall y \in P. \quad \blacksquare$$
-    2. **If $\bar{c} > 0$ strictly for all nonbasic variables, then $x$ is the UNIQUE optimal solution.**
 
-    #### **4. The Minimum Ratio Test: Step Size $\theta^*$ & Leaving Variable *(B&T §3.2, pp. 88–90)***
+    **Condition 1: If $\bar{c} \ge 0$ (all reduced costs are nonnegative), then $x$ is an OPTIMAL SOLUTION.**
+
+    *Proof:* For any feasible vector $y \ge 0$ with $Ay = b$:
+
+    $$
+    c'y - c'x = c'(y - x) = (c' - c_B' B^{-1}A)(y - x) + c_B' B^{-1}(Ay - Ax) = \bar{c}'(y - x) + c_B' B^{-1}(b - b) = \bar{c}'(y - x)
+    $$
+
+    Since $x_N = 0$ at the current BFS, $y_j - x_j = y_j \ge 0$ for all nonbasic $j$, and $\bar{c}_B = 0$ for all basic variables. Therefore:
+
+    $$
+    c'y - c'x = \sum_{j \notin B} \bar{c}_j y_j \ge 0 \implies c'y \ge c'x \quad \forall y \in P. \quad \blacksquare
+    $$
+
+    **Condition 2: If $\bar{c}_j > 0$ strictly for all nonbasic variables, then $x$ is the UNIQUE optimal solution.**
+
+    #### **4. The Minimum Ratio Test: Step Size $\theta^*$ & Leaving Variable**
     If there exists some nonbasic variable $x_j$ with $\bar{c}_j < 0$, we choose $x_j$ to **enter the basis**.
     As $\theta$ increases, the new point is $x(\theta) = x + \theta d$:
-    - Nonbasic variables: $x_j(\theta) = \theta \ge 0$, other nonbasics $= 0$.
-    - Basic variables: $x_B(\theta) = x_B - \theta u$, where $u \equiv B^{-1}A_j \in \mathbb{R}^m$.
+
+    * Nonbasic variables: $x_j(\theta) = \theta \ge 0$, other nonbasics $= 0$.
+    * Basic variables: $x_B(\theta) = x_B - \theta u$, where $u \equiv B^{-1}A_j \in \mathbb{R}^m$.
 
     How large can $\theta$ become before some basic variable violates nonnegativity ($x_{B(i)} < 0$)?
-    - If $u_i \le 0$, then $x_{B(i)}(\theta) = x_{B(i)} - \theta u_i \ge x_{B(i)} \ge 0$ for all $\theta \ge 0$ (the component never decreases).
-      * **Unboundedness Test:** If **$u = B^{-1}A_j \le 0$** (every component non-positive), then $\theta$ can grow to $+\infty$ with cost decreasing at rate $\bar{c}_j < 0$. **The optimal cost is $-\infty$ (Unbounded LP)!**
-    - If some $u_i > 0$, then $x_{B(i)}(\theta) \ge 0 \iff \theta \le \frac{x_{B(i)}}{u_i}$. Therefore, the maximum feasible step size is:
-      $$\boxed{\theta^* = \min_{\substack{i = 1, \dots, m \\ u_i > 0}} \frac{x_{B(i)}}{u_i}}$$
-      Let $l \in \{1, \dots, m\}$ be an index that achieves this minimum ($u_l > 0$ and $\theta^* = x_{B(l)} / u_l$).
-      The variable **$x_{B(l)}$ drops to zero and LEAVES the basis**, replaced by $x_j$!
+
+    * If $u_i \le 0$, then $x_{B(i)}(\theta) = x_{B(i)} - \theta u_i \ge x_{B(i)} \ge 0$ for all $\theta \ge 0$ (the component never decreases).
+    * **Unboundedness Test:** If **$u = B^{-1}A_j \le 0$** (every component non-positive), then $\theta$ can grow to $+\infty$ with cost decreasing at rate $\bar{c}_j < 0$. **The optimal cost is $-\infty$ (Unbounded LP)!**
+    * If some $u_i > 0$, then $x_{B(i)}(\theta) \ge 0 \iff \theta \le \frac{x_{B(i)}}{u_i}$. Therefore, the maximum feasible step size is:
+
+    $$
+    \boxed{\theta^* = \min_{\substack{i = 1, \dots, m \\ u_i > 0}} \frac{x_{B(i)}}{u_i}}
+    $$
+
+    Let $l \in \{1, \dots, m\}$ be an index that achieves this minimum ($u_l > 0$ and $\theta^* = x_{B(l)} / u_l$). The variable **$x_{B(l)}$ drops to zero and LEAVES the basis**, replaced by $x_j$!
 
     ---
 
-    ### 1.3 Degeneracy, Stalling, and Anti-Cycling Rules *(B&T §3.4, pp. 108–111; Dantzig Ch. 10)*
+    ### 1.3 Degeneracy, Stalling, and Anti-Cycling Rules
 
     What happens if $\theta^* = 0$?
     This occurs when the current BFS is **degenerate**, meaning some basic variable $x_{B(l)} = 0$ with $u_l > 0$.
     Then $\theta^* = 0 / u_l = 0$:
-    - The basis changes from $B$ to a new basis $\bar{B}$ (swapping $x_{B(l)} \leftrightarrow x_j$).
-    - But the physical solution vector **does not move at all**: $x_{\text{new}} = x + 0 \cdot d = x$.
-    - The objective value **does not change**: $c'x_{\text{new}} = c'x$.
+
+    * The basis changes from $B$ to a new basis $\bar{B}$ (swapping $x_{B(l)} \leftrightarrow x_j$).
+    * But the physical solution vector **does not move at all**: $x_{\text{new}} = x + 0 \cdot d = x$.
+    * The objective value **does not change**: $c'x_{\text{new}} = c'x$.
 
     #### **The Danger of Cycling (Alan Hoffman's Counterexample, 1953)**
     If a sequence of pivots all have $\theta^* = 0$, the simplex method can theoretically visit a sequence of bases $B_1 \to B_2 \to \cdots \to B_k \to B_1$, **cycling indefinitely without terminating!**
 
     #### **Guaranteed Anti-Cycling Pivoting Rules:**
-    1. **Bland's Smallest-Index Rule (1977) *(B&T p. 110)***:
-       - **Pivot In:** Among all candidates with $\bar{c}_j < 0$, pick the one with the **smallest variable index $j$**:
-         $$j = \min \{k \mid \bar{c}_k < 0\}$$
-       - **Pivot Out:** Among all basic variables that tie for the minimum ratio $\theta^* = x_{B(i)} / u_i$, pick the one with the **smallest variable index $B(i)$**:
-         $$l = \min \{B(i) \mid u_i > 0,\, x_{B(i)}/u_i = \theta^*\}$$
-       - *Theorem:* Under Bland's rule, the Simplex method **never cycles** and is guaranteed to terminate in a finite number of steps!
-    2. **Dantzig's Lexicographic Rule / Perturbation Method *(B&T p. 108; Dantzig §10-2)***:
-       - Perturb the right-hand side $b(\epsilon) = b + \sum_{k=1}^m \epsilon^k A_k$. This breaks all ties lexicographically, guaranteeing $\theta^* > 0$ in the perturbed problem so cycling is impossible.
+
+    **1. Bland's Smallest-Index Rule (1977):**
+
+    * **Pivot In:** Among all candidates with $\bar{c}_j < 0$, pick the one with the **smallest variable index $j$**: $j = \min \{k \mid \bar{c}_k < 0\}$.
+    * **Pivot Out:** Among all basic variables that tie for the minimum ratio $\theta^* = x_{B(i)} / u_i$, pick the one with the **smallest variable index $B(i)$**: $l = \min \{B(i) \mid u_i > 0,\, x_{B(i)}/u_i = \theta^*\}$.
+    * Under Bland's rule, the Simplex method **never cycles** and is guaranteed to terminate in a finite number of steps!
+
+    **2. Lexicographic / Perturbation Method:**
+
+    * Perturb the right-hand side $b(\epsilon) = b + \sum_{k=1}^m \epsilon^k A_k$. This breaks all ties lexicographically, guaranteeing $\theta^* > 0$ in the perturbed problem so cycling is impossible.
 
     ---
 
-    ### 1.4 Finding an Initial BFS: The Two-Phase Simplex Method *(B&T §3.5, pp. 111–119)*
+    ### 1.4 Finding an Initial BFS: The Two-Phase Simplex Method
 
     How do we start the Simplex method if an initial BFS is not immediately obvious (e.g. constraints have $\ge$ or $=$ signs)?
 
-    1. **Phase I (Drive Infeasibility to Zero):**
-       - Multiply rows by $-1$ if necessary so $b \ge 0$.
-       - Add $m$ non-negative **artificial variables** $y = (y_1, \dots, y_m)' \ge 0$:
-         $$\min_{x \ge 0,\, y \ge 0} \quad \sum_{i=1}^m y_i \quad \text{subject to} \quad Ax + y = b$$
-       - An initial BFS is immediately obvious: set $x = 0$ (nonbasic) and $y = b \ge 0$ (basic, with $B = I_m$).
-       - Solve with Simplex. At optimality:
-         * If optimal cost $\sum y_i^* > 0$: **The original linear program is INFEASIBLE** (no solution satisfies $Ax = b, x \ge 0$).
-         * If optimal cost $\sum y_i^* = 0$: All artificial variables are zero! Drop the artificial columns to obtain an initial BFS for the original problem.
-    2. **Phase II (Optimize Original Objective):**
-       - Starting from the clean BFS produced by Phase I, optimize the true objective $c'x$.
+    **1. Phase I (Drive Infeasibility to Zero):**
+
+    * Multiply rows by $-1$ if necessary so $b \ge 0$.
+    * Add $m$ non-negative **artificial variables** $y = (y_1, \dots, y_m)' \ge 0$:
+
+    $$
+    \min_{x \ge 0,\, y \ge 0} \quad \sum_{i=1}^m y_i \quad \text{subject to} \quad Ax + y = b
+    $$
+
+    * An initial BFS is immediately obvious: set $x = 0$ (nonbasic) and $y = b \ge 0$ (basic, with $B = I_m$). Solve with Simplex. At optimality: if optimal cost $\sum y_i^* > 0$, **the original linear program is INFEASIBLE** (no solution satisfies $Ax = b, x \ge 0$); if optimal cost $\sum y_i^* = 0$, all artificial variables are zero—drop the artificial columns to obtain an initial BFS for the original problem.
+
+    **2. Phase II (Optimize Original Objective):**
+
+    * Starting from the clean BFS produced by Phase I, optimize the true objective $c'x$.
     """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(linprog, mo, np, pl):
+    # Worked 3x7 Numerical Example: Connecting p' = c_B' B^{-1}, Reduced Costs c_bar_j = c_j - p' A_j, and Simplex Pivots
+    _A37 = np.array([
+        [1.0, 2.0, 1.0, 1.0, 1.0, 0.0, 0.0],
+        [2.0, 1.0, 3.0, 1.0, 0.0, 1.0, 0.0],
+        [1.0, 1.0, 1.0, 2.0, 0.0, 0.0, 1.0],
+    ])  # shape: (3, 7)
+    _b37 = np.array([10.0, 15.0, 8.0])
+    _c37 = np.array([-4.0, -3.0, -5.0, -2.0, 0.0, 0.0, 0.0])
+
+    # Trace full Simplex iterations using exact matrix formulas
+    _basis = [4, 5, 6]  # 0-indexed columns {5, 6, 7} (slacks I_3)
+    _iter_rows = []
+    _snap_iter1 = None
+
+    for _it in range(10):
+        _B = _A37[:, _basis]
+        _B_inv = np.linalg.inv(_B)
+        _x_B = _B_inv @ _b37
+        _c_B = _c37[_basis]
+        _p = _c_B @ _B_inv                      # Simplex multipliers: p' = c_B' B^{-1}
+        _cbar = _c37 - _p @ _A37                # Reduced costs: c_bar_j = c_j - p' A_j
+
+        _x_full = np.zeros(7)
+        _x_full[_basis] = _x_B
+        _obj = float(_c37 @ _x_full)
+
+        _neg = [j for j in range(7) if _cbar[j] < -1e-9]
+        if not _neg:
+            _iter_rows.append({
+                "Iter": _it,
+                "Basis (1-based)": str([i + 1 for i in _basis]),
+                "Simplex Multipliers p'": str(np.round(_p, 3).tolist()),
+                "Entering": "— (Optimal!)",
+                "Leaving": "—",
+                "Step θ*": 0.0,
+                "Objective c'x": round(_obj, 3),
+            })
+            break
+
+        _enter = min(_neg, key=lambda j: _cbar[j])  # Most negative reduced cost
+        _u = _B_inv @ _A37[:, _enter]               # u = B^{-1} A_j  (so d_B = -u)
+        _ratios = [(_x_B[i] / _u[i], i) for i in range(3) if _u[i] > 1e-9]
+        _theta, _leave_pos = min(_ratios, key=lambda t: t[0])
+        _leave = _basis[_leave_pos]
+
+        if _it == 1:
+            _snap_iter1 = {
+                "basis": [i + 1 for i in _basis],
+                "B": _B.copy(),
+                "B_inv": _B_inv.copy(),
+                "x_B": _x_B.copy(),
+                "c_B": _c_B.copy(),
+                "p": _p.copy(),
+                "cbar": _cbar.copy(),
+                "enter": _enter + 1,
+                "u": _u.copy(),
+                "d_B": -_u.copy(),
+                "theta": float(_theta),
+                "leave": _leave + 1,
+                "obj": _obj,
+            }
+
+        _iter_rows.append({
+            "Iter": _it,
+            "Basis (1-based)": str([i + 1 for i in _basis]),
+            "Simplex Multipliers p'": str(np.round(_p, 3).tolist()),
+            "Entering": f"x_{_enter+1} (c̄={_cbar[_enter]:.3f})",
+            "Leaving": f"x_{_leave+1}",
+            "Step θ*": round(float(_theta), 3),
+            "Objective c'x": round(_obj, 3),
+        })
+        _basis[_leave_pos] = _enter
+
+    _res37 = linprog(_c37, A_eq=_A37, b_eq=_b37, bounds=(0.0, None), method="highs")
+
+    _md_37 = mo.md(
+        r"""
+    ### 1.2b Worked $3 \times 7$ Numerical Example: Connecting $p' = c_B'B^{-1}$, $\bar{c}_j = c_j - p'A_j$, and Simplex Pivots
+
+    Consider $\min c'x$ subject to $Ax = b,\, x \ge 0$ with $m = 3$ constraints and $n = 7$ variables (slacks $x_5, x_6, x_7$):
+
+    $$
+    A = \begin{bmatrix} 1 & 2 & 1 & 1 & 1 & 0 & 0 \\ 2 & 1 & 3 & 1 & 0 & 1 & 0 \\ 1 & 1 & 1 & 2 & 0 & 0 & 1 \end{bmatrix}, \quad
+    b = \begin{bmatrix} 10 \\ 15 \\ 8 \end{bmatrix}, \quad
+    c' = \begin{bmatrix} -4 & -3 & -5 & -2 & 0 & 0 & 0 \end{bmatrix}
+    $$
+
+    * **Iteration 0 (Initial Basis $B = \{5, 6, 7\} \implies B = I_3$):** $x_B = (10, 15, 8)'$, $c_B = (0, 0, 0)'$, so $p' = c_B'B^{-1} = (0, 0, 0)$ and $\bar{c}_j = c_j$. Most negative is $\bar{c}_3 = -5 \implies$ **$x_3$ enters**. Ratio test with $u = B^{-1}A_3 = (1, 3, 1)'$ gives $\theta^* = \min(10/1,\, 15/3,\, 8/1) = 5 \implies$ **$x_6$ leaves**.
+    * **Iteration 1 (Basis $B = \{5, 3, 7\}$, where $B \ne I_3$):**
+      1. **Basis & Inverse:** $B = [A_5\; A_3\; A_7] = \begin{bmatrix} 1 & 1 & 0 \\ 0 & 3 & 0 \\ 0 & 1 & 1 \end{bmatrix} \implies B^{-1} = \begin{bmatrix} 1 & -1/3 & 0 \\ 0 & 1/3 & 0 \\ 0 & -1/3 & 1 \end{bmatrix}$, $x_B = B^{-1}b = (5, 5, 3)'$, cost $c'x = -25$.
+      2. **Simplex Multipliers ($p' = c_B' B^{-1}$):** Since $c_B' = [0, -5, 0]$, we get $p' = [0, -5, 0] B^{-1} = [0,\; -5/3,\; 0]$.
+      3. **Reduced Costs ($\bar{c}_j = c_j - p'A_j$):** For $x_2$, $p'A_2 = (-5/3)(1) = -5/3$, so $\bar{c}_2 = -3 - (-5/3) = -4/3 < 0$ (most negative $\implies$ **$x_2$ enters**). Similarly $\bar{c}_1 = -2/3$, $\bar{c}_4 = -1/3$, $\bar{c}_6 = +5/3$, and basic variables $\{5, 3, 7\}$ have $\bar{c} = 0$.
+      4. **Basic Direction & Ratio Test:** $u = B^{-1}A_2 = (5/3, 1/3, 2/3)'$, so $d_B = -u = (-5/3, -1/3, -2/3)'$, and $\theta^* = \min(\frac{5}{5/3}, \frac{5}{1/3}, \frac{3}{2/3}) = 3 \implies$ **$x_5$ leaves**.
+    """
+        + f"\n**Live Solver Verification:** Optimal objective = `{_res37.fun:.3f}` at $x^* = {np.round(_res37.x, 3).tolist()}$ (matches Simplex Iteration {_iter_rows[-1]['Iter']}!)."
+    )
+
+    _df_37 = pl.DataFrame(_iter_rows)
+    mo.vstack([_md_37, _df_37])
+
     return
 
 
@@ -1619,12 +2051,12 @@ def sec9_code(linprog, mo, np, pl, plt, simplex_step_slider):
         [0.0, 1.0, 6.0, 0.0, 1.0, 0.0, 0.0],
         [1.0, 0.0, 0.0, 0.0, 0.0, 1.0, 0.0],
         [0.0, 1.0, 0.0, 0.0, 0.0, 0.0, 1.0],
-    ])
-    b_smp = np.array([8.0, 12.0, 4.0, 6.0])
-    c_smp = np.array([-3.0, -2.0, -4.0, 0.0, 0.0, 0.0, 0.0])
+    ]) # Constraint matrix for 4 constraints and 7 variables (3 original + 4 slack)
+    b_smp = np.array([8.0, 12.0, 4.0, 6.0]) # RHS capacities for 4 constraints
+    c_smp = np.array([-3.0, -2.0, -4.0, 0.0, 0.0, 0.0, 0.0]) # Objective: min -3*x1 - 2*x2 - 4*x3
 
     def run_simplex_step_by_step(A, b, c, initial_basis, max_steps=5):
-        """Executes the exact algebraic Simplex algorithm (B&T Section 3.2, pp. 87-90)."""
+        """Executes the exact algebraic Simplex algorithm."""
         m, n = A.shape
         basis = list(initial_basis)
         history = []
@@ -1670,7 +2102,7 @@ def sec9_code(linprog, mo, np, pl, plt, simplex_step_slider):
                 break
 
             # Entering variable: Bland's rule or most negative reduced cost
-            # B&T rule: choose nonbasic j with most negative \bar{c}_j
+            # Pricing rule: choose nonbasic j with most negative \bar{c}_j
             candidates = [j for j in range(n) if reduced_costs[j] < -1e-8 and j not in basis]
             j_enter = min(candidates, key=lambda j: reduced_costs[j])
 
@@ -1684,7 +2116,7 @@ def sec9_code(linprog, mo, np, pl, plt, simplex_step_slider):
                     ratios.append((x_B[i] / u[i], i, basis[i]))
                 else:
                     ratios.append((np.inf, i, basis[i]))
-    
+
             valid_ratios = [(r, i, var) for r, i, var in ratios if r < np.inf]
             if not valid_ratios:
                 info["unbounded"] = True
@@ -1712,8 +2144,8 @@ def sec9_code(linprog, mo, np, pl, plt, simplex_step_slider):
 
     # SciPy (HiGHS) verification
     _res_smp = linprog(c_smp, A_eq=A_smp, b_eq=b_smp, bounds=(0.0, None), method="highs")
-    gurobi_smp_opt = _res_smp.x.copy()
-    gurobi_smp_obj = float(_res_smp.fun)
+    opt_smp_opt = _res_smp.x.copy()
+    opt_smp_obj = float(_res_smp.fun)
 
     # Build Full Simplex Tableau Table for current step
     # Tableau layout:
@@ -1763,7 +2195,7 @@ def sec9_code(linprog, mo, np, pl, plt, simplex_step_slider):
     """
     else:
         _step_summary_md += f"""
-    - **Gurobi Benchmark Check:** Optimal cost = **{gurobi_smp_obj:.2f}** at $x^* = {np.round(gurobi_smp_opt, 2).tolist()}$ ✓
+    - **Optimal Solution Verification:** Optimal cost = **{opt_smp_obj:.2f}** at $x^* = {np.round(opt_smp_opt, 2).tolist()}$ ✓
     """
 
     mo.vstack([
@@ -1776,19 +2208,23 @@ def sec9_code(linprog, mo, np, pl, plt, simplex_step_slider):
 
 
 @app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Module 02 — Topic 2: Duality Theory (Foundations, Theorems & The Universal Toolkit)
+    """)
+    return
+
+
+@app.cell(hide_code=True)
 def sec10_theory(mo):
     mo.md(r"""
-    ---
-    ## Module 02 — Topic 2: Duality Theory (Foundations, Theorems & The Universal Toolkit)
-    *Sources: Bertsimas & Tsitsiklis Chapter 4 (§4.1–§4.6, pp. 139–174); Dantzig Chapter 6 (§6-1–§6-5) & Chapter 12 (§12-1–§12-4)*
-
     ### 2.1 Why We Need Duality and In Which Cases We Can Use It
 
     Duality is arguably the most elegant, powerful, and practical concept in all of mathematical optimization. Every linear program (called the **Primal**) has a twin linear program (called the **Dual**) built from the exact same data ($A, b, c$), but viewed from an opposite, complementary perspective.
 
     To truly understand duality, we must first answer: **Why do we need it, and in which real-world and algorithmic cases do we use it?**
 
-    ```
+    ```text
                          ┌────────────────────────────────────────┐
                          │          PRIMAL PROBLEM                │
                          │  min c'x  s.t.  Ax = b,  x >= 0        │
@@ -1809,36 +2245,43 @@ def sec10_theory(mo):
 
     #### **Seven Major Cases Where Duality Is Essential:**
 
-    1. **Instant, Unambiguous Certificate of Optimality (Zero Duality Gap):**
-       - In numerical computation, when should an algorithm stop? If you only solve the primal, you have a candidate solution $x$, but how do you prove no better solution exists without checking all corners?
-       - **Weak Duality** guarantees that **every** dual feasible solution $p$ provides a hard lower bound on the primal: $p'b \le c'x$.
-       - **Strong Duality** proves that at optimality, the bound closes completely: **$c'x^* = p^{*\top} b$**! The moment your solver finds a pair $(x, p)$ where $c'x = p'b$, you have a mathematical proof of global optimality.
+    **1. Instant, Unambiguous Certificate of Optimality (Zero Duality Gap):**
 
-    2. **Economic Analysis, Marginal Valuation, and Shadow Prices ($\frac{\partial v^*}{\partial b_i} = p_i^*$):**
-       - Suppose a factory manager has $b_1 = 100$ hours of machine capacity. The optimal dual multiplier $p_1^* = \$15/\text{hour}$ is the **Shadow Price**.
-       - It answers: *"If a supplier offers 10 extra machine hours for \$12/hour, should we buy them?"* Yes! Each extra hour increases profit by \$15, netting \$3/hour in pure profit.
-       - If machine 2 has idle capacity left over (slack $> 0$), Complementary Slackness proves its shadow price is **identically $\$0$**—paying even one cent for more of an unused resource is irrational!
+    * In numerical computation, when should an algorithm stop? If you only solve the primal, you have a candidate solution $x$, but how do you prove no better solution exists without checking all corners?
+    * **Weak Duality** guarantees that **every** dual feasible solution $p$ provides a hard lower bound on the primal: $p'b \le c'x$.
+    * **Strong Duality** proves that at optimality, the bound closes completely: **$c'x^* = p^{*\top} b$**! The moment your solver finds a pair $(x, p)$ where $c'x = p'b$, you have a mathematical proof of global optimality.
 
-    3. **Massive Computational Speedups when $m \gg n$:**
-       - The Simplex method's computational burden scales primarily with the number of constraints $m$, not the number of variables $n$.
-       - Suppose you face an LP with **$1,000,000$ constraints** and **$50$ variables** ($m = 10^6, n = 50$). Solving this directly in the primal requires inverting $10^6 \times 10^6$ basis matrices—practically impossible!
-       - Its **Dual** problem has only **$50$ constraints** and **$1,000,000$ variables** ($m_{\text{dual}} = 50, n_{\text{dual}} = 10^6$). In the dual, the basis matrix is just $50 \times 50$, which Simplex solves in milliseconds!
+    **2. Economic Analysis, Marginal Valuation, and Shadow Prices ($\frac{\partial v^*}{\partial b_i} = p_i^*$):**
 
-    4. **The Dual Simplex Method & Mixed-Integer Programming (Branch-and-Bound):**
-       - In Mixed-Integer Linear Programming (MIP solvers like Gurobi), the solver creates a search tree by branching on fractional variables (e.g., adding a constraint $x_1 \le 3$).
-       - When a new constraint is added to an already-solved LP, the old optimal solution $x^*$ violates the new constraint (**primal infeasible**). However, the old dual multipliers **remain dual feasible**!
-       - Instead of restarting from scratch, solvers run the **Dual Simplex Method**, which restores feasibility in just 1 or 2 pivots. Modern MIP solvers like Gurobi spend over 90% of their execution time running Dual Simplex at branch-and-bound nodes!
+    * Suppose a factory manager has $b_1 = 100$ hours of machine capacity. The optimal dual multiplier $p_1^* = \$15/\text{hour}$ is the **Shadow Price**.
+    * It answers: *"If a supplier offers 10 extra machine hours for \$12/hour, should we buy them?"* Yes! Each extra hour increases profit by \$15, netting \$3/hour in pure profit.
+    * If machine 2 has idle capacity left over (slack $> 0$), Complementary Slackness proves its shadow price is **identically $\$0$**—paying even one cent for more of an unused resource is irrational!
 
-    5. **Decomposition in Large-Scale and Stochastic Programming:**
-       - **Benders Decomposition / L-Shaped Method (Module SP-06):** In two-stage stochastic programming under uncertainty, the second-stage recourse subproblems are solved to obtain their dual vectors $p(\xi)$. These dual vectors define **Benders optimality cuts** $E[p(\xi)'h(\xi)] + E[p(\xi)'T(\xi)]x \le \theta$, transferring future risk information back to the first-stage master decision!
-       - **Dantzig-Wolfe Decomposition & Column Generation (Module OPT-06):** In cutting-stock, crew scheduling, and vehicle routing problems, there are exponentially many columns. Dual variables from the restricted master problem are sent to a subproblem ("pricing problem") to generate only the columns with negative reduced cost $\bar{c}_j = c_j - p'A_j < 0$.
+    **3. Massive Computational Speedups when $m \gg n$:**
 
-    6. **Post-Optimality & Sensitivity Analysis Without Re-solving:**
-       - Duality allows us to analytically compute the allowable ranges of objective coefficients $\Delta c$ and right-hand-side capacities $\Delta b$ over which the current optimal basis remains valid.
+    * The Simplex method's computational burden scales primarily with the number of constraints $m$, not the number of variables $n$.
+    * Suppose you face an LP with **$1,000,000$ constraints** and **$50$ variables** ($m = 10^6, n = 50$). Solving this directly in the primal requires inverting $10^6 \times 10^6$ basis matrices—practically impossible!
+    * Its **Dual** problem has only **$50$ constraints** and **$1,000,000$ variables** ($m_{\text{dual}} = 50, n_{\text{dual}} = 10^6$). In the dual, the basis matrix is just $50 \times 50$, which Simplex solves in milliseconds!
 
-    7. **Game Theory and Equilibrium (Von Neumann's Minimax Theorem):**
-       - In a zero-sum two-player game, Player 1 seeks to maximize their guaranteed payoff $\max_x \min_y x'Ay$, while Player 2 seeks to minimize Player 1's payoff $\min_y \max_x x'Ay$.
-       - Strong Duality proves that $\max \min = \min \max$, establishing the existence of a unique game value and Nash equilibrium.
+    **4. The Dual Simplex Method & Mixed-Integer Programming (Branch-and-Bound):**
+
+    * In Mixed-Integer Linear Programming (MIP solvers), the solver creates a search tree by branching on fractional variables (e.g., adding a constraint $x_1 \le 3$).
+    * When a new constraint is added to an already-solved LP, the old optimal solution $x^*$ violates the new constraint (**primal infeasible**). However, the old dual multipliers **remain dual feasible**!
+    * Instead of restarting from scratch, solvers run the **Dual Simplex Method**, which restores feasibility in just 1 or 2 pivots. Modern MIP solvers spend over 90% of their execution time running Dual Simplex at branch-and-bound nodes!
+
+    **5. Decomposition in Large-Scale and Stochastic Programming:**
+
+    * **Benders Decomposition / L-Shaped Method:** In two-stage stochastic programming under uncertainty, the second-stage recourse subproblems are solved to obtain their dual vectors $p(\xi)$. These dual vectors define **Benders optimality cuts** $E[p(\xi)'h(\xi)] + E[p(\xi)'T(\xi)]x \le \theta$, transferring future risk information back to the first-stage master decision!
+    * **Dantzig-Wolfe Decomposition & Column Generation:** In cutting-stock, crew scheduling, and vehicle routing problems, there are exponentially many columns. Dual variables from the restricted master problem are sent to a subproblem ("pricing problem") to generate only the columns with negative reduced cost $\bar{c}_j = c_j - p'A_j < 0$.
+
+    **6. Post-Optimality & Sensitivity Analysis Without Re-solving:**
+
+    * Duality allows us to analytically compute the allowable ranges of objective coefficients $\Delta c$ and right-hand-side capacities $\Delta b$ over which the current optimal basis remains valid.
+
+    **7. Game Theory and Equilibrium (Von Neumann's Minimax Theorem):**
+
+    * In a zero-sum two-player game, Player 1 seeks to maximize their guaranteed payoff $\max_x \min_y x'Ay$, while Player 2 seeks to minimize Player 1's payoff $\min_y \max_x x'Ay$.
+    * Strong Duality proves that $\max \min = \min \max$, establishing the existence of a unique game value and Nash equilibrium.
 
     ---
 
@@ -1846,9 +2289,9 @@ def sec10_theory(mo):
 
     How do we systematically write down the dual of *any* linear program, regardless of its mixture of $\ge, \le, =$ constraints and non-negative, non-positive, or free variables?
 
-    Bertsimas & Tsitsiklis establish the universal translation rules in **Table 4.1** *(B&T p. 143)*:
+    The universal primal-dual translation rules are summarized below:
 
-    #### **Table 4.1: The Universal Primal-Dual Translation Lexicon**
+    #### **Universal Primal-Dual Translation Lexicon**
 
     | **PRIMAL (Minimize)** | $\longleftrightarrow$ | **DUAL (Maximize)** |
     | :---: | :---: | :---: |
@@ -1862,95 +2305,143 @@ def sec10_theory(mo):
     | $x_j \text{ is free}$ | $\longleftrightarrow$ | $\sum_{i=1}^m a_{ij} p_i = c_j$ |
 
     > **Memory Rule (Minimization Primal):**
-    > - An equality constraint ($=$) gives a **free** dual variable (you have no slack to play with).
-    > - A standard $\ge$ inequality gives a **nonnegative** dual variable ($p_i \ge 0$).
-    > - A standard $x_j \ge 0$ variable gives an upper bound on dual pricing: $\sum_i a_{ij} p_i \le c_j$ (the imputed value cannot exceed direct cost).
+    >
+    > * An equality constraint ($=$) gives a **free** dual variable (you have no slack to play with).
+    > * A standard $\ge$ inequality gives a **nonnegative** dual variable ($p_i \ge 0$).
+    > * A standard $x_j \ge 0$ variable gives an upper bound on dual pricing: $\sum_i a_{ij} p_i \le c_j$ (the imputed value cannot exceed direct cost).
 
     #### **Two Canonical Forms in Matrix Notation:**
-    1. **Standard Form Primal-Dual Pair:**
-       $$\begin{aligned}
-       \text{(Primal)} \quad & \min \; c'x \quad \text{s.t.} \quad Ax = b,\; x \ge 0 \\
-       \text{(Dual)} \quad & \max \; p'b \quad \text{s.t.} \quad p'A \le c' \quad (p \text{ free})
-       \end{aligned}$$
-    2. **Symmetric Form Primal-Dual Pair:**
-       $$\begin{aligned}
-       \text{(Primal)} \quad & \min \; c'x \quad \text{s.t.} \quad Ax \ge b,\; x \ge 0 \\
-       \text{(Dual)} \quad & \max \; p'b \quad \text{s.t.} \quad p'A \le c',\; p \ge 0
-       \end{aligned}$$
+
+    **1. Standard Form Primal-Dual Pair:**
+
+    $$
+    \begin{aligned}
+    \text{(Primal)} \quad & \min \; c'x \quad \text{s.t.} \quad Ax = b,\; x \ge 0 \\
+    \text{(Dual)} \quad & \max \; p'b \quad \text{s.t.} \quad p'A \le c' \quad (p \text{ free})
+    \end{aligned}
+    $$
+
+    **2. Symmetric Form Primal-Dual Pair:**
+
+    $$
+    \begin{aligned}
+    \text{(Primal)} \quad & \min \; c'x \quad \text{s.t.} \quad Ax \ge b,\; x \ge 0 \\
+    \text{(Dual)} \quad & \max \; p'b \quad \text{s.t.} \quad p'A \le c',\; p \ge 0
+    \end{aligned}
+    $$
 
     ---
 
     ### 2.3 The Core Theorems & Proofs
 
-    #### **Theorem 4.1 (Weak Duality Theorem) *(B&T p. 146; Dantzig §6-4)***
+    #### **Theorem 4.1 (Weak Duality Theorem)**
     If $x$ is a feasible solution to the primal problem ($\min c'x, Ax = b, x \ge 0$) and $p$ is a feasible solution to the dual problem ($\max p'b, p'A \le c'$), then:
-    $$\boxed{p'b \le c'x}$$
-    * **Proof (One-line elegance):**
-      $$p'b = p'(Ax) = (p'A)x \le c'x$$
-      The last inequality holds because $p'A \le c'$ (dual feasibility) and $x \ge 0$ (primal feasibility, so multiplying preserves inequalities). $\blacksquare$
 
-    * **Immediate Corollaries:**
-      1. If $x$ is primal feasible and $p$ is dual feasible with **$c'x = p'b$**, then **$x$ is primal optimal and $p$ is dual optimal**.
-      2. If the primal objective is unbounded below ($v^* = -\infty$), the dual **must be infeasible**.
-      3. If the dual objective is unbounded above ($+\infty$), the primal **must be infeasible**.
+    $$
+    \boxed{p'b \le c'x}
+    $$
+
+    **Proof *(One-line elegance)*:**
+
+    $$
+    p'b = p'(Ax) = (p'A)x \le c'x
+    $$
+
+    The last inequality holds because $p'A \le c'$ (dual feasibility) and $x \ge 0$ (primal feasibility, so multiplying preserves inequalities). $\blacksquare$
+
+    **Immediate Corollaries:**
+
+    1. If $x$ is primal feasible and $p$ is dual feasible with **$c'x = p'b$**, then **$x$ is primal optimal and $p$ is dual optimal**.
+    2. If the primal objective is unbounded below ($v^* = -\infty$), the dual **must be infeasible**.
+    3. If the dual objective is unbounded above ($+\infty$), the primal **must be infeasible**.
 
     ---
 
-    #### **Theorem 4.2 (Strong Duality Theorem) *(B&T p. 148; Dantzig §6-3)***
+    #### **Theorem 4.2 (Strong Duality Theorem)**
     If a linear programming problem has an optimal solution $x^*$, then the dual problem also has an optimal solution $p^*$, and their optimal objective values are equal:
-    $$\boxed{c'x^* = p^{*\top} b}$$
 
-    * **Constructive Proof via the Simplex Method *(B&T pp. 148–149)*:**
-      1. Let $x^*$ be an optimal basic feasible solution obtained by the Simplex method with optimal basis matrix $B$.
-      2. Define the candidate dual vector:
-         $$p^* \equiv (c_B' B^{-1})' \iff p^{*\top} = c_B' B^{-1}$$
-      3. Check **Dual Feasibility**:
-         By Simplex optimality (Theorem 3.1), all reduced costs at $x^*$ are nonnegative:
-         $$\bar{c}' = c' - c_B' B^{-1} A = c' - p^{*\top} A \ge 0 \iff p^{*\top} A \le c'$$
-         Thus $p^*$ satisfies every dual constraint—$p^*$ is dual feasible!
-      4. Check **Objective Value Match**:
-         $$p^{*\top} b = c_B' B^{-1} b = c_B' x_B^* = c'x^*$$
-         (since nonbasic variables in $x^*$ are zero).
-      5. By Corollary 1 to Weak Duality, since $p^*$ is dual feasible and $p^{*\top}b = c'x^*$, **$p^*$ is an optimal solution to the dual**. $\blacksquare$
+    $$
+    \boxed{c'x^* = p^{*\top} b}
+    $$
 
-    #### **The 4-Case Duality Outcome Matrix *(B&T Table 4.2, p. 150)*:**
+    **Constructive Proof via the Simplex Method:**
+
+    1. Let $x^*$ be an optimal basic feasible solution obtained by the Simplex method with optimal basis matrix $B$.
+    2. Define the candidate dual vector:
+
+    $$
+    p^* \equiv (c_B' B^{-1})' \iff p^{*\top} = c_B' B^{-1}
+    $$
+
+    3. Check **Dual Feasibility**: By Simplex optimality (Theorem 3.1), all reduced costs at $x^*$ are nonnegative:
+
+    $$
+    \bar{c}' = c' - c_B' B^{-1} A = c' - p^{*\top} A \ge 0 \iff p^{*\top} A \le c'
+    $$
+
+    Thus $p^*$ satisfies every dual constraint—$p^*$ is dual feasible!
+
+    4. Check **Objective Value Match**:
+
+    $$
+    p^{*\top} b = c_B' B^{-1} b = c_B' x_B^* = c'x^*
+    $$
+
+    (since nonbasic variables in $x^*$ are zero).
+
+    5. By Corollary 1 to Weak Duality, since $p^*$ is dual feasible and $p^{*\top}b = c'x^*$, **$p^*$ is an optimal solution to the dual**. $\blacksquare$
+
+    #### **The 4-Case Duality Outcome Matrix:**
     Can both primal and dual be infeasible simultaneously? **Yes!**
+
     | | **Dual: Finite Optimum** | **Dual: Unbounded ($+\infty$)** | **Dual: Infeasible** |
     | :--- | :---: | :---: | :---: |
     | **Primal: Finite Optimum** | **Possible** ($c'x^* = p^{*\top}b$) | Impossible (Weak Duality) | Impossible (Strong Duality) |
     | **Primal: Unbounded ($-\infty$)** | Impossible (Weak Duality) | Impossible (Weak Duality) | **Possible** |
-    | **Primal: Infeasible** | Impossible (Strong Duality) | **Possible** | **Possible** *(e.g. Dantzig p. 144)* |
+    | **Primal: Infeasible** | Impossible (Strong Duality) | **Possible** | **Possible** |
 
     ---
 
-    ### 2.4 The Complementary Slackness Theorem *(B&T §4.3, pp. 151–154)*
+    ### 2.4 The Complementary Slackness Theorem
 
     Complementary slackness is the mathematical statement of **economic efficiency**: a resource with leftover slack has zero marginal value, and an activity with positive reduced cost will not be produced.
 
     #### **Theorem 4.3 (Complementary Slackness)**
     Let $x$ be primal feasible and $p$ be dual feasible. Then $x$ and $p$ are **simultaneously optimal** if and only if:
-    $$\boxed{p_i \cdot (a_i'x - b_i) = 0 \quad \text{for all } i = 1, \dots, m} \qquad \text{(Primal Complementarity)}$$
-    $$\boxed{(c_j - p'A_j) \cdot x_j = \bar{c}_j \cdot x_j = 0 \quad \text{for all } j = 1, \dots, n} \qquad \text{(Dual Complementarity)}$$
 
-    * **Proof:**
-      Subtract the dual objective from the primal objective:
-      $$c'x - p'b = c'x - p'(Ax - s) = (c' - p'A)x + p's = \sum_{j=1}^n (c_j - p'A_j) x_j + \sum_{i=1}^m p_i s_i$$
-      where $s = Ax - b \ge 0$ is the surplus/slack.
-      Since $x \ge 0$, $(c' - p'A) \ge 0$, $p \ge 0$, and $s \ge 0$, **every single term in both sums is nonnegative ($\ge 0$)**!
-      The sum equals zero ($c'x = p'b \iff \text{Strong Duality}$) **if and only if every individual term vanishes**:
-      1. For each $i$: either $a_i'x = b_i$ (constraint is binding / tight), or $p_i = 0$ (shadow price is zero).
-      2. For each $j$: either $x_j = 0$ (activity is inactive), or $p'A_j = c_j$ (reduced cost $\bar{c}_j = 0$, marginal value equals marginal cost). $\blacksquare$
+    $$
+    \boxed{p_i \cdot (a_i'x - b_i) = 0 \quad \text{for all } i = 1, \dots, m} \qquad \text{(Primal Complementarity)}
+    $$
+
+    $$
+    \boxed{(c_j - p'A_j) \cdot x_j = \bar{c}_j \cdot x_j = 0 \quad \text{for all } j = 1, \dots, n} \qquad \text{(Dual Complementarity)}
+    $$
+
+    **Proof:**
+
+    Subtract the dual objective from the primal objective:
+
+    $$
+    c'x - p'b = c'x - p'(Ax - s) = (c' - p'A)x + p's = \sum_{j=1}^n (c_j - p'A_j) x_j + \sum_{i=1}^m p_i s_i
+    $$
+
+    where $s = Ax - b \ge 0$ is the surplus/slack. Since $x \ge 0$, $(c' - p'A) \ge 0$, $p \ge 0$, and $s \ge 0$, **every single term in both sums is nonnegative ($\ge 0$)**!
+    The sum equals zero ($c'x = p'b \iff \text{Strong Duality}$) **if and only if every individual term vanishes**:
+
+    1. For each $i$: either $a_i'x = b_i$ (constraint is binding / tight), or $p_i = 0$ (shadow price is zero).
+    2. For each $j$: either $x_j = 0$ (activity is inactive), or $p'A_j = c_j$ (reduced cost $\bar{c}_j = 0$, marginal value equals marginal cost). $\blacksquare$
 
     ---
 
-    ### 2.5 Farkas' Lemma & Theorems of the Alternative *(B&T §4.6, pp. 165–169)*
+    ### 2.5 Farkas' Lemma & Theorems of the Alternative
 
     Can we prove whether a system of linear inequalities has a solution without running an algorithm?
 
-    #### **Theorem 4.4 (Farkas' Lemma — B&T p. 165)**
+    #### **Theorem 4.4 (Farkas' Lemma)**
     Let $A \in \mathbb{R}^{m \times n}$ and $b \in \mathbb{R}^m$. Exactly **one** of the following two systems has a solution:
-    1. **System 1:** $Ax = b$ and $x \ge 0$  *(primal feasibility: $b$ lies in the cone generated by columns of $A$)*
-    2. **System 2:** $p'A \le 0$ and $p'b > 0$  *(dual certificate: a separating hyperplane $p$ separating $b$ from $\operatorname{cone}(A)$)*
+
+    1. **System 1:** $Ax = b$ and $x \ge 0$ *(primal feasibility: $b$ lies in the cone generated by columns of $A$)*
+    2. **System 2:** $p'A \le 0$ and $p'b > 0$ *(dual certificate: a separating hyperplane $p$ separating $b$ from $\operatorname{cone}(A)$)*
 
     * **Geometric Meaning:** If $b$ is outside the cone of columns of $A$, there exists a hyperplane with normal $p$ such that the entire cone lies on one side ($p'A_j \le 0$ for all $j$) while $b$ lies strictly on the other side ($p'b > 0$).
     """)
@@ -1970,7 +2461,7 @@ def sec10_ui(mo):
 @app.cell
 def sec10_code(delta_b1_slider, linprog, mo, np, pl, plt):
     # Interactive Duality Laboratory: Shadow Prices, Complementary Slackness & Dual Simplex
-    # Primal Problem (B&T Section 4.4 Example):
+    # Primal Problem (Resource Allocation Example):
     # max 3*x1 + 2*x2 + 4*x3  <=>  min -3*x1 - 2*x2 - 4*x3
     # s.t.
     # (1)  x1 +  x2 + 2*x3 <= 8 + \Delta b1   (Resource 1 capacity)
@@ -2083,7 +2574,7 @@ def sec10_code(delta_b1_slider, linprog, mo, np, pl, plt):
                 mo.md("#### 2. Dual Complementary Slackness ($x_j^* \\cdot \\bar{c}_j = 0$):"),
                 _df_comp_dual,
                 mo.md(
-                    "> **Economic Law:** A resource with positive leftover slack ($s_i > 0$) has a shadow price of **exactly $0**! "
+                    r"> **Economic Law:** A resource with positive leftover slack ($s_i > 0$) has a shadow price of **exactly \$0**! "
                     "You only pay a positive shadow price ($p_i^* > 0$) for bottlenecks that are 100% utilized ($s_i = 0$)."
                 )
             ]),
@@ -2093,14 +2584,19 @@ def sec10_code(delta_b1_slider, linprog, mo, np, pl, plt):
 
 
 @app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## Master Synthesis: Modules 01 & 02 Unified Architecture
+    """)
+    return
+
+
+@app.cell(hide_code=True)
 def sec8_summary(mo):
     mo.md(r"""
-    ---
-    ## Master Synthesis: Modules 01 & 02 Unified Architecture
-
-    | Foundation / Module | Core Mathematical Question | Geometric Picture ($\mathbb{R}^n$) | Algebraic / Simplex Picture ($Ax=b, x\ge 0$) | Key Theorems & Results (B&T / Dantzig) |
+    | Foundation / Module | Core Mathematical Question | Geometric Picture ($\mathbb{R}^n$) | Algebraic / Simplex Picture ($Ax=b, x\ge 0$) | Key Theorems & Results |
     | :--- | :--- | :--- | :--- | :--- |
-    | **1. Polyhedra & Convex Sets** | What is the shape of feasible sets? | Intersection of $m$ halfspaces; all line segments $[x,y]$ stay inside $P$. | Convex combination $\lambda x + (1-\lambda)y$ preserves $Ax \ge b$. | **Theorem 2.1**; Dantzig's proof: *Every local minimum is global*. |
+    | **1. Polyhedra & Convex Sets** | What is the shape of feasible sets? | Intersection of $m$ halfspaces; all line segments $[x,y]$ stay inside $P$. | Convex combination $\lambda x + (1-\lambda)y$ preserves $Ax \ge b$. | **Theorem 2.1**; *Every local minimum is a global minimum*. |
     | **2. Extreme Points, Vertices & BFS** | What is a "corner point"? | **Extreme Point:** Not a strict midpoint. **Vertex:** Unique minimizer of some $c'x$. | **BFS:** Exactly $n$ linearly independent active constraints ($a_i'x = b_i$). | **Theorem 2.3** ($\text{Vertex} \iff \text{Extreme Point} \iff \text{BFS}$); at most $\binom{m}{n}$ corners. |
     | **3. Polyhedra in Standard Form** | How do computers represent polyhedra? | Synthesizing vector $b$ inside the positive cone $\operatorname{cone}(A_1, \dots, A_n)$. | Nonbasic $x_N = 0$ ($n-m$ zeros); Basic $x_B = B^{-1}b \ge 0$ ($\det(B) \ne 0$). | **Theorem 2.4**; Full row rank $\operatorname{rank}(A)=m$ is without loss of generality (**Theorem 2.5**). |
     | **4. Degeneracy** | What happens when $>n$ walls meet at a point? | Overdetermined corner: 3+ lines in 2D, 4+ planes in 3D. | $> n - m$ zeros; basic variable $(B^{-1}b)_i = 0$; multiple bases $B_1, B_2$ yield same $x$. | **Defs 2.10 & 2.11**; RHS perturbation $b + \epsilon$ splits degenerate corners into nondegenerate ones. |
@@ -2109,7 +2605,25 @@ def sec8_summary(mo):
     | **7. Representation of Bounded Polyhedra\*** | External ($\mathcal{H}$) vs. Internal ($\mathcal{V}$) view | Every polytope is the rubber-band convex hull of its extreme points. | $x = \sum_{i=1}^K \mu_i x^i$ ($\mu_i \ge 0, \sum \mu_i = 1$). Foundation of Dantzig-Wolfe decomposition. | **Theorem 2.9** (Constructive ray-shooting induction on dimension). |
     | **8. The Simplex Method** | How do we find the optimal corner in practice? | Walking along 1D edges from corner to adjacent corner in cost-reducing directions. | Pivot step: choose entering variable with $\bar{c}_j < 0$, ratio test $\theta^* = \min_{u_i>0} x_{B(i)}/u_i$ to find leaving variable. | **Theorem 3.1** (Optimality if $\bar{c} \ge 0$); **Bland's Rule** (no cycling); **Two-Phase Simplex**. |
     | **9. Duality Theory** | Why do we need the dual problem? | Primal allocates resources; Dual values resources via separating hyperplanes. | Primal: $\min c'x, Ax=b, x\ge 0$. Dual: $\max p'b, p'A \le c'$. Duality gap closes to 0 at optimality. | **Theorems 4.1 & 4.2** (Weak & Strong Duality); **Theorem 4.3** (Complementary Slackness); **Farkas' Lemma**. |
-    | **10. Economic & Algorithmic Applications of Duality** | In which cases do we use duality? | Shadow prices ($\frac{\partial v^*}{\partial b_i} = p_i^*$), Dual Simplex re-optimization in MIP branch-and-bound, Benders/L-shaped cuts in Stochastic Programming, and solving $m \gg n$ problems. |
+    | **10. Economic & Algorithmic Applications of Duality** | In which cases do we use duality? | Resource valuation & separating hyperplanes for large-scale decomposition. | Shadow prices ($\frac{\partial v^*}{\partial b_i} = p_i^*$), Dual Simplex pivots when $m \gg n$ or branching. | MIP Branch-and-Bound re-optimization, Benders / L-shaped cuts, Column Generation. |
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ## References
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    1. **Bertsimas, D., & Tsitsiklis, J. N.** (1997). *Introduction to Linear Optimization*. Athena Scientific.
+    2. **Dantzig, G. B.** (1963). *Linear Programming and Extensions*. Princeton University Press.
+    3. **Boyd, S., & Vandenberghe, L.** (2004). *Convex Optimization*. Cambridge University Press.
     """)
     return
 
