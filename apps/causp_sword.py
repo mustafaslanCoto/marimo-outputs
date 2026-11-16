@@ -4,20 +4,10 @@
 #     "altair==6.3.0",
 #     "marimo>=0.23.3",
 #     "marimo-lens>=0.2.3",
-#     "mcp==2.0.0",
-#     "nbformat==5.11.1",
 #     "numpy",
-#     "openai==3.51.0",
 #     "pandas",
-#     "plotly==6.7.0",
 #     "polars==2.1.0",
-#     "pyarrow==26.0.1",
-#     "pytest==9.2.0",
-#     "python-lsp-ruff==2.3.4",
-#     "python-lsp-server==1.15.0",
-#     "ruff==0.17.5",
-#     "vegafusion==2.0.3",
-#     "vl-convert-python==1.9.0.post1",
+#     "pyarrow",
 #     "websockets==17.4",
 # ]
 # ///
@@ -39,38 +29,6 @@ def _():
     import marimo as mo
 
     return (mo,)
-
-
-@app.cell(hide_code=True)
-def _():
-    # import re
-    # import sys
-
-    # _RAW = "https://raw.githubusercontent.com/mustafaslanCoto/marimo-outputs/main/apps/html"
-
-    # if sys.platform == "emscripten":
-    #     from pyodide.http import open_url
-
-    #     _html = open_url(f"{_RAW}/title-sword.html").read()
-    # else:
-    #     import urllib.request
-
-    #     _html = urllib.request.urlopen(f"{_RAW}/title-sword.html").read().decode("utf-8") # for local testing
-
-    # _src = lambda m: f'src="{_RAW}/{m.group(1)}"'
-
-    # # drop Quarto's ```{=html} fences; logos live in talks/images
-    # _html = re.sub(r"^```.*$", "", _html, flags=re.M)
-    # _html = re.sub(r'src="(images/[^"]+)"', _src, _html)
-    # # scale with the slide width (Quarto reveal does this via its 1920x1080 canvas)
-    # _scale = """<style>
-    #   .ts-wrap { container-type: inline-size; width: 100%; overflow: hidden; }
-    #   .ts-wrap .title-slide-custom { font-size: 2.1cqw; }
-    #   .ts-wrap .title-slide-custom .logo-bar { margin-bottom: 4cqw; }
-    #   .ts-wrap .title-slide-custom .logo-bar img { height: 6cqw !important; width: auto !important; max-width: none; }
-    # </style>"""
-    # mo.Html(f'{_scale}<div class="ts-wrap">{_html}</div>')
-    return
 
 
 @app.cell
@@ -308,61 +266,34 @@ def _(mo):
 
 @app.cell
 def _(mo):
-    import polars as pl
     import pandas as pd
     import numpy as np
 
-
-    def pl_to_pd(df):
-        # polars -> plain dict -> pandas: no pyarrow anywhere
-        return pd.DataFrame(df.to_dict(as_series=False))
-
-
     data_url = mo.notebook_location() / "public"
 
-    order_df = pl_to_pd(pl.read_csv(str(data_url / "diagnosis_order.csv")))
-    diags = pl_to_pd(pl.read_csv(str(data_url / "caus_hrg_lgb.csv")))
-    diags = diags.merge(order_df, on='profile', how ='left')
-    diags.rename(columns={"proportion": "dominance"}, inplace=True)
-    diags.sort_values("dominance", ascending=False, inplace=True)
-    try:
-        # parquet is fast locally; polars parquet reading needs pyarrow under WASM
-        _src = pl.read_parquet(str(data_url / "clean_df_present.parquet"))
-    except Exception:
-        _src = pl.read_csv(
-            str(data_url / "clean_df_present.csv.gz"),
-            schema_overrides={
-                "HS_START_DATE": pl.Datetime("ns"),
-                "HS_END_DATE": pl.Datetime("ns"),
-                "PATIENT_CLASS_CORRECTED": pl.String,
-            },
-        )
-    cleand_df = pl_to_pd(_src)
-    exist_codes = cleand_df[cleand_df["code"]!= "$$X"]["code"].drop_duplicates().tolist()
+    order_df = pd.read_csv(str(data_url / "diagnosis_order.csv"))
+    diags = (
+        pd.read_csv(str(data_url / "caus_hrg_lgb.csv"))
+        .merge(order_df, on="profile", how="left")
+        .rename(columns={"proportion": "dominance"})
+        .drop(columns=["variance"])
+    )
 
-    diags = diags.drop(columns=["variance"])
-
-    # the desired order as a list
-    _order = order_df["profile"].tolist()   # adjust column name to match your file
-
-    # make diags' profile column an ordered categorical
+    _order = order_df["profile"].tolist()
     diags["profile"] = pd.Categorical(diags["profile"], categories=_order, ordered=True)
-
-    # sort by it
     diags = diags.sort_values("profile").reset_index(drop=True)
 
-    confounders = pl_to_pd(pl.read_csv(str(data_url / "confounders.csv")))
-    return (
-        cleand_df,
-        confounders,
-        data_url,
-        diags,
-        exist_codes,
-        np,
-        pd,
-        pl,
-        pl_to_pd,
-    )
+    cleand_df = pd.read_csv(str(data_url / "clean_df_present.csv"))
+    exist_codes = cleand_df[cleand_df["code"] != "$$X"]["code"].drop_duplicates().tolist()
+
+    confounders = pd.read_csv(str(data_url / "confounders.csv"))
+    return cleand_df, confounders, data_url, diags, exist_codes, np, pd
+
+
+@app.cell
+def _(cleand_df):
+    cleand_df[["HS_START_DATE", "ADMITMETHOD_GROUP", "ADMISSION_SOURCE", "spell_los", "group", "SEX", "age_group", "code"]].to_csv("public/clean_df_present.csv")
+    return
 
 
 @app.cell
@@ -372,8 +303,12 @@ def _(diags):
 
 
 @app.cell
-def _(data_url, exist_codes, pl, pl_to_pd):
-    hrg = pl_to_pd(pl.read_csv(str(data_url / "nhs_group.csv")).select(["code", "HRG 1", "Code Description"]).unique().rename({"code": "ICD_code", "HRG 1": "HRG", "Code Description": "ICD_description"}))
+def _(data_url, exist_codes, pd):
+    hrg = (
+        pd.read_csv(str(data_url / "nhs_group.csv"), usecols=["code", "HRG 1", "Code Description"])
+        .drop_duplicates()
+        .rename(columns={"code": "ICD_code", "HRG 1": "HRG", "Code Description": "ICD_description"})
+    )
     ## filter ICD
     hrg = hrg[hrg["ICD_code"].isin(exist_codes)]
     hrg["HRG2"] = hrg["HRG"].str[:2]
