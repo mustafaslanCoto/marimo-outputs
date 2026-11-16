@@ -87,7 +87,7 @@ def native_title_sample(mo):
       <div style="font-size: 0.9rem; color: #64748B; margin-top: 1.2rem;">13 October 2026</div>
     </div>
     """)
-    return (img_uri,)
+    return img_uri, sys
 
 
 @app.cell(hide_code=True)
@@ -265,15 +265,25 @@ def _(mo):
 
 
 @app.cell
-def _(mo):
+def _(mo, sys):
     import pandas as pd
     import numpy as np
 
     data_url = mo.notebook_location() / "public"
 
-    order_df = pd.read_csv(str(data_url / "diagnosis_order.csv"))
+
+    def load_csv(name, **kwargs):
+        url = str(data_url / name)
+        if sys.platform == "emscripten":
+            from pyodide.http import open_url
+
+            return pd.read_csv(open_url(url), **kwargs)
+        return pd.read_csv(url, **kwargs)
+
+
+    order_df = load_csv("diagnosis_order.csv")
     diags = (
-        pd.read_csv(str(data_url / "caus_hrg_lgb.csv"))
+        load_csv("caus_hrg_lgb.csv")
         .merge(order_df, on="profile", how="left")
         .rename(columns={"proportion": "dominance"})
         .drop(columns=["variance"])
@@ -283,11 +293,11 @@ def _(mo):
     diags["profile"] = pd.Categorical(diags["profile"], categories=_order, ordered=True)
     diags = diags.sort_values("profile").reset_index(drop=True)
 
-    cleand_df = pd.read_csv(str(data_url / "clean_df_present.csv"))
+    cleand_df = load_csv("clean_df_present.csv")
     exist_codes = cleand_df[cleand_df["code"] != "$$X"]["code"].drop_duplicates().tolist()
 
-    confounders = pd.read_csv(str(data_url / "confounders.csv"))
-    return cleand_df, confounders, data_url, diags, exist_codes, np, pd
+    confounders = load_csv("confounders.csv")
+    return cleand_df, confounders, diags, exist_codes, load_csv, np, pd
 
 
 @app.cell
@@ -303,9 +313,9 @@ def _(diags):
 
 
 @app.cell
-def _(data_url, exist_codes, pd):
+def _(exist_codes, load_csv):
     hrg = (
-        pd.read_csv(str(data_url / "nhs_group.csv"), usecols=["code", "HRG 1", "Code Description"])
+        load_csv("nhs_group.csv", usecols=["code", "HRG 1", "Code Description"])
         .drop_duplicates()
         .rename(columns={"code": "ICD_code", "HRG 1": "HRG", "Code Description": "ICD_description"})
     )
