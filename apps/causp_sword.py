@@ -271,6 +271,7 @@ def _(mo, sys):
 
     data_url = mo.notebook_location() / "public"
 
+    ## Helper function for reading file so it works both locally and work in WASM for githup page
 
     def load_csv(name, **kwargs):
         url = str(data_url / name)
@@ -279,6 +280,36 @@ def _(mo, sys):
 
             return pd.read_csv(open_url(url), **kwargs)
         return pd.read_csv(url, **kwargs)
+
+
+    # async def load_excel(name, **kwargs):
+    #     url = str(data_url / name)
+    #     if sys.platform == "emscripten":
+    #         import io
+    #         from pyodide.http import pyfetch
+    #
+    #         resp = await pyfetch(url)
+    #         return pd.read_excel(io.BytesIO(await resp.bytes()), **kwargs)
+    #     return pd.read_excel(url, **kwargs)
+    #
+    # Example:
+    # nhs_df = await load_excel("nhs_group.xlsx")
+
+
+    # async def load_pickle(name):
+    #     import pickle
+    #
+    #     url = str(data_url / name)
+    #     if sys.platform == "emscripten":
+    #         from pyodide.http import pyfetch
+    #
+    #         resp = await pyfetch(url)
+    #         return pickle.loads(await resp.bytes())
+    #     with open(url, "rb") as f:
+    #         return pickle.load(f)
+    #
+    # Example:
+    # obj = await load_pickle("model_results.pkl")
 
 
     order_df = load_csv("diagnosis_order.csv")
