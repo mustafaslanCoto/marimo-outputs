@@ -11,7 +11,7 @@
 #     "pandas",
 #     "plotly==6.7.0",
 #     "polars==2.1.0",
-#     "pyarrow",
+#     "pyarrow==26.0.1",
 #     "pytest==9.2.0",
 #     "python-lsp-ruff==2.3.4",
 #     "python-lsp-server==1.15.0",
@@ -325,7 +325,19 @@ def _(mo):
     diags = diags.merge(order_df, on='profile', how ='left')
     diags.rename(columns={"proportion": "dominance"}, inplace=True)
     diags.sort_values("dominance", ascending=False, inplace=True)
-    cleand_df = pl_to_pd(pl.read_parquet(str(data_url / "clean_df_present.parquet")))
+    try:
+        # parquet is fast locally; polars parquet reading needs pyarrow under WASM
+        _src = pl.read_parquet(str(data_url / "clean_df_present.parquet"))
+    except Exception:
+        _src = pl.read_csv(
+            str(data_url / "clean_df_present.csv.gz"),
+            schema_overrides={
+                "HS_START_DATE": pl.Datetime("ns"),
+                "HS_END_DATE": pl.Datetime("ns"),
+                "PATIENT_CLASS_CORRECTED": pl.String,
+            },
+        )
+    cleand_df = pl_to_pd(_src)
     exist_codes = cleand_df[cleand_df["code"]!= "$$X"]["code"].drop_duplicates().tolist()
 
     diags = diags.drop(columns=["variance"])
