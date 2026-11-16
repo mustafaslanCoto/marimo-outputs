@@ -312,14 +312,20 @@ def _(mo):
     import pandas as pd
     import numpy as np
 
+
+    def pl_to_pd(df):
+        # polars -> plain dict -> pandas: no pyarrow anywhere
+        return pd.DataFrame(df.to_dict(as_series=False))
+
+
     data_url = mo.notebook_location() / "public"
 
-    order_df = pl.read_csv(str(data_url / "diagnosis_order.csv")).to_pandas()
-    diags = pl.read_csv(str(data_url / "caus_hrg_lgb.csv")).to_pandas()
+    order_df = pl_to_pd(pl.read_csv(str(data_url / "diagnosis_order.csv")))
+    diags = pl_to_pd(pl.read_csv(str(data_url / "caus_hrg_lgb.csv")))
     diags = diags.merge(order_df, on='profile', how ='left')
     diags.rename(columns={"proportion": "dominance"}, inplace=True)
     diags.sort_values("dominance", ascending=False, inplace=True)
-    cleand_df = pl.read_parquet(str(data_url / "clean_df_present.parquet")).to_pandas()
+    cleand_df = pl_to_pd(pl.read_parquet(str(data_url / "clean_df_present.parquet")))
     exist_codes = cleand_df[cleand_df["code"]!= "$$X"]["code"].drop_duplicates().tolist()
 
     diags = diags.drop(columns=["variance"])
@@ -333,8 +339,18 @@ def _(mo):
     # sort by it
     diags = diags.sort_values("profile").reset_index(drop=True)
 
-    confounders = pl.read_csv(str(data_url / "confounders.csv")).to_pandas()
-    return cleand_df, confounders, data_url, diags, exist_codes, np, pd, pl
+    confounders = pl_to_pd(pl.read_csv(str(data_url / "confounders.csv")))
+    return (
+        cleand_df,
+        confounders,
+        data_url,
+        diags,
+        exist_codes,
+        np,
+        pd,
+        pl,
+        pl_to_pd,
+    )
 
 
 @app.cell
@@ -344,8 +360,8 @@ def _(diags):
 
 
 @app.cell
-def _(data_url, exist_codes, pl):
-    hrg = pl.read_csv(str(data_url / "nhs_group.csv")).select(["code", "HRG 1", "Code Description"]).unique().rename({"code": "ICD_code", "HRG 1": "HRG", "Code Description": "ICD_description"}).to_pandas()
+def _(data_url, exist_codes, pl, pl_to_pd):
+    hrg = pl_to_pd(pl.read_csv(str(data_url / "nhs_group.csv")).select(["code", "HRG 1", "Code Description"]).unique().rename({"code": "ICD_code", "HRG 1": "HRG", "Code Description": "ICD_description"}))
     ## filter ICD
     hrg = hrg[hrg["ICD_code"].isin(exist_codes)]
     hrg["HRG2"] = hrg["HRG"].str[:2]
