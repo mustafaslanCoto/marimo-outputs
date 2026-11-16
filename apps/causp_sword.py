@@ -301,12 +301,6 @@ def _(mo, sys):
 
 
 @app.cell
-def _(cleand_df):
-    cleand_df[["HS_START_DATE", "ADMITMETHOD_GROUP", "ADMISSION_SOURCE", "spell_los", "group", "SEX", "age_group", "code"]].to_csv("public/clean_df_present.csv")
-    return
-
-
-@app.cell
 def _(diags):
     hrg_est = diags["profile"].tolist()
     return (hrg_est,)
@@ -335,13 +329,6 @@ def _(hrg, hrg_est, np):
                 hrg_in["HRG"], 
                 hrg_in["HRG2"]
     )
-    return
-
-
-@app.cell
-def _():
-    # mo.ui.table(diags.round(2), pagination=True, page_size=15)
-    # cleand_df[cleand_df["code"]!="$$X"]["code"].value_counts(normalize=True).cumsum()
     return
 
 
