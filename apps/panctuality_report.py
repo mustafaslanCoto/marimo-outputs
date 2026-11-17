@@ -30,137 +30,124 @@ def _():
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    # Bus Punctuality Analysis in Rural Wales (Cymru Wledig LPIP)
-    ## Multi-Day Hourly Operational Delay & Reliability Dashboard
-
-    **Research Placement:** Cymru Wledig Local Partnership & Innovation Plan (Rural Wales)
-    **Target Policy Focus:** Bus Service Punctuality, Headway Vulnerability, and Rural Accessibility
-    **Live Telematics Data:** SIRI-VM (Automatic Vehicle Location tracking from local daily archives)
-    **Scheduled Timetable:** GTFS (General Transit Feed Specification for Wales)
-    **Meteorological Data:** Cardiff Hourly Weather (Temperature, Rain, Wind, Conditions)
-
-    ---
-    ### 1. Business & Policy Domain Context
-
-    In urban agglomerations, bus networks operate on high-frequency "turn-up-and-go" schedules where a 5-minute delay is merely an inconvenience. In contrast, **rural Welsh bus networks** (e.g. across Powys, Ceredigion, Gwynedd, Carmarthenshire, and Pembrokeshire) operate under fundamentally different operational constraints:
-
-    1. **Low Frequency & Long Headways:** Rural services often operate on 60-to-120-minute headways. A bus running 10–15 minutes late or failing to connect at a rural interchange leaves passengers stranded for hours.
-    2. **Early Departures are Severe Service Failures:** In rural areas, a bus departing ahead of schedule ($< -1\text{ min}$) is worse than a moderate delay, as passengers arriving precisely on time miss their sole transport option.
-    3. **UK Department for Transport (DfT) / Traffic Commissioner Standards:**
-       - **Early:** $> 1$ minute early ($< -1.0\text{ min}$).
-       - **On Time (Compliant Window):** Between 1 minute early and 5 minutes 59 seconds late ($-1.0\text{ to }+5.99\text{ min}$). Target: **95% of services on time**.
-       - **Late:** 6 minutes to 14 minutes 59 seconds late ($+6.0\text{ to }+15.0\text{ min}$).
-       - **Very Late:** $\ge 15$ minutes late ($> +15.0\text{ min}$), representing severe operational breakdown.
-    4. **Predictability vs. Lateness:** A service that is consistently 4 minutes late is reliable and easy to plan around. A service with high variability (wide Inter-Quartile Range, IQR) induces anxiety and modal shift to private cars.
-    """)
-    return
-
-
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ---
-    ### 2. Data Dictionary & Telematics Definitions
-
-    - **`recorded_at`:** UTC timestamp when onboard vehicle telematics recorded GPS position.
-    - **`origin_aimed_departure`:** Timetabled departure time from the route's initial terminus.
-    - **`line_ref` / `LineRef`:** Commercial bus route number (e.g. `1`, `T4`, `T5`, `X4`, `40`).
-    - **`vehicle_ref` / `VehicleRef`:** Unique vehicle tracker ID (e.g. `ACYM-1234`, `A2BV-24`), from which the Operator National Operator Code (NOC) is extracted.
-    - **`timestamp_hour`:** Observation timestamp truncated to the operating hour in civil local time (`Europe/London`: BST = UTC+1).
-    - **`delay_min`:** Telematics lateness from timetable: $(t_{\text{observed}} - t_{\text{aimed}})$, unwrapped around midnight.
-    - **`temperature_c`:** Ambient air temperature (°C) merged from Cardiff meteorological observations.
-    - **`precipitation_mm`:** Hourly rainfall amount (mm) merged from Cardiff meteorological observations.
+    # Bus Punctuality in Rural Wales: Multi-Day Hourly Delay and Reliability
     """)
     return
 
 
 @app.cell
-def _():
-    import os, io, re, sys, time, json, warnings
-    from pathlib import Path
-    import numpy as np
-    import pandas as pd
-    import matplotlib.pyplot as plt
-    import matplotlib as mpl
+def _(mo):
+    mo.md(r"""
+    **Cymru Wledig Local Partnership and Innovation Plan (LPIP) · Research placement report**
+    Prepared by Mustafa Aslan · November 2026
 
-    warnings.filterwarnings("ignore")
+    This report examines five months of bus vehicle tracking data from rural and regional Wales, matched to the national timetable and to hourly weather observations. It describes how late buses actually run, tests how much of that delay can be predicted, and isolates the causal effect of route geometry on punctuality.
 
-    # Live data directory: local siri_zips archive
-    # DfT Standards & Visual Theme
-    DFT_BANDS = ["Early", "On time", "Late", "Very late"]
-    DFT_COLORS = {
-        "Early": "#2a78d6",      # Bright Blue
-        "On time": "#1baf7a",    # Forest Green
-        "Late": "#eda100",       # Amber Orange
-        "Very late": "#e34948"   # Red
-    }
-    PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"]
-    DOW_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-    return DOW_ORDER, Path, io, json, np, pd, plt, sys
+    **Data:** SIRI-VM vehicle positions, the GTFS timetable feed for Wales, and Cardiff hourly weather.
+    **Code and cached results:** [github.com/mustafaslanCoto/marimo-outputs](https://github.com/mustafaslanCoto/marimo-outputs)
+    """)
+    return
 
 
 @app.cell
-def io_helpers(Path, json, mo, pd, sys):
-    # Shared loaders for cached results that ship next to the notebook.
-    # Works locally and as a WASM app on GitHub Pages, using the site's standard
-    # pattern: mo.notebook_location + pyodide open_url / pyfetch in WASM.
-    data_url = mo.notebook_location() / "lpip_results"
-
-
-    def load_csv(name, **kwargs):
-        url = str(data_url / name)
-        if sys.platform == "emscripten":
-            from pyodide.http import open_url
-
-            return pd.read_csv(open_url(url), **kwargs)
-        return pd.read_csv(url, **kwargs)
-
-
-    def load_json(name):
-        url = str(data_url / name)
-        if sys.platform == "emscripten":
-            from pyodide.http import open_url
-
-            return json.loads(open_url(url).read())
-        with open(url, "r") as f:
-            return json.load(f)
-
-
-    def save_local(name, text_or_bytes) -> bool:
-        """Write a file next to the notebook when running locally.
-
-        GitHub Pages (WASM) locations are read-only, so this returns False there
-        and callers treat the cache write as skipped.
-        """
-        if sys.platform == "emscripten":
-            return False
-        path = Path(str(data_url / name))
-        path.parent.mkdir(parents=True, exist_ok=True)
-        mode = "wb" if isinstance(text_or_bytes, bytes) else "w"
-        with open(path, mode) as f:
-            f.write(text_or_bytes)
-        return True
-
-    return data_url, load_csv, load_json, save_local
-
-
-@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ---
-    ## 2. Timetable Reference: GTFS Schedule Pre-Indexing & Matching Architecture
+    ## 1. Key findings at a glance
+    """)
+    return
 
-    ### 🎯 What We Are Doing
-    In this stage, we load the Welsh national bus timetable from the reference GTFS directory (`data2/20260520_bus_sch`) and build three high-performance in-memory lookup structures:
-    1. **Scheduled Origin Minute (`origin_min`):** For each trip, we identify its very first scheduled stop (`stop_sequence == 1`) and compute its departure time in minutes from midnight (modulo 1440).
-    2. **Representative Directional & Fallback Lookups (`rep` and `repfb`):**
-       - `rep`: Primary directional match mapping `(agency_noc, route_short_name, origin_min, direction_id) -> trip_id`.
-       - `repfb`: Direction-free fallback mapping `(agency_noc, route_short_name, origin_min) -> trip_id_fb`.
-    3. **Per-Trip Stop Coordinates & Times (`trip_arrays`):** A fast dictionary mapping each `trip_id` to pre-compiled NumPy arrays of stop latitudes, longitudes, and scheduled timetable minutes `(slat, slon, smin)`.
 
-    ### 💡 Why We Do It This Way
-    - **AVL Telemetry Has No GTFS `trip_id`:** Live SIRI-VM feeds provide vehicle locations, lines, and terminal departure times, but do **not** carry GTFS `trip_id` foreign keys. Matching on `(operator, line, origin_min, direction)` reconstructs this connection unambiguously.
-    - **Sub-Millisecond Vectorized Distance:** Iterating row-by-row or doing GeoPandas spatial joins on hundreds of thousands of live pings across 1.2M stop records would take hours. Pre-compiling stop arrays allows NumPy to calculate great-circle distances for an entire vehicle journey in milliseconds.
+@app.cell
+def _(mo):
+    mo.md(r"""
+    - **The network runs close to schedule in a typical hour.** Median delay is **1.05 minutes** with an interquartile range of **4.3 minutes**, measured across 236,671 hourly route records that represent **13.4 million vehicle stop observations**.
+    - **Punctuality under the statutory standard is the exception.** Against the Department for Transport window of 1 minute early to 6 minutes late, **55% of observations are on time**, **26% run early**, **10% are late** and **9% are very late**.
+    - **Early running is the hidden reliability problem.** Services between 05:00 and 07:00 have negative median delay, and the earliest Sunday departures run more than 4 minutes ahead of timetable.
+    - **Friday afternoon is the worst window in the week.** Median delay reaches **2.6 minutes at 15:00 on Friday**, more than four times the Saturday figure at the same hour.
+    - **Delay can be predicted in level but not in detail.** A full feature set explains **36 to 39% of the variance** in hourly delay. LightGBM is the stronger learner on all seven prediction tasks, by about 2% lower error on delay itself.
+    - **Route shape is not the cause of rural lateness.** After controlling for weather, time, operator and route, neither circuity nor stop spacing has a detectable effect. Only total route length is significant, at about **0.08 minutes less delay per extra kilometre**, a small effect that most likely reflects timetable padding on longer routes.
+    - **Weather matters less than operators expect.** Clear, overcast and rainy hours all sit within 0.2 minutes of each other in median delay.
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ## 2. Policy context: why a few minutes matter in rural Wales
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    In an urban area a bus every five minutes absorbs a delayed vehicle: passengers take the next one. Rural Welsh networks work differently. Services across Powys, Ceredigion, Gwynedd, Carmarthenshire and Pembrokeshire often run on 60 to 120 minute headways, so one late bus can mean two hours of lost access to work, healthcare or education.
+
+    Two features of that timetable shape everything that follows.
+
+    - **Early departures are worse than moderate lateness.** A bus that leaves ahead of schedule strands passengers who arrived on time, and on many routes there is no later service that day.
+    - **Variability matters as much as the average.** A service that is consistently four minutes late can be planned around. The same average delay with a wide spread produces missed connections and lost confidence.
+
+    Punctuality is classified with the UK Department for Transport and Traffic Commissioner bands:
+
+    | Band | Definition | Meaning for passengers |
+    |---|---|---|
+    | Early | more than 1 minute before timetable | a service failure: the bus may already have gone |
+    | On time | 1 minute early to 5 minutes 59 seconds late | the national target is 95% of services |
+    | Late | 6 to 14 minutes 59 seconds late | noticeable, usually recoverable |
+    | Very late | 15 minutes or more late | severe breakdown, journey abandoned |
+
+    The analysis answers three questions in sequence. How late are buses, and when? How much of that delay can be predicted from the data? And what part of the remaining variation is genuinely caused by the shape of the route?
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ## 3. Data: sources and preparation
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    The panel combines three sources that share a single key: the hour of observation. Vehicle positions show where a bus actually was, the timetable shows where it should have been, and weather describes the conditions it faced.
+
+    | | |
+    |---|---|
+    | **Period covered** | 1 April to 21 August 2026, with 119 days of full coverage and a short gap in mid-August |
+    | **Raw material** | 242,695 hourly route records built from 13.4 million stop-level observations |
+    | **Analysis panel** | 236,671 records after removing the extreme 1% at each end of the delay distribution |
+    | **Modelling data** | 165,669 training rows and 71,002 test rows, with 18 base variables expanded to 225 columns |
+
+    The trimmed tails are dominated by recording artefacts and depot movements rather than passenger-carrying service, so keeping them would distort every average in the report without adding information.
+
+    The rest of this section describes each source and the choices that turned raw vehicle pings into a reliable measure of lateness.
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ## 1. Key findings at a glance
+    """)
+    return
+
+
+@app.cell
+def io_helpers(mo):
+    mo.md(r"""
+    - **The network runs close to schedule in a typical hour.** Median delay is **1.05 minutes** with an interquartile range of **4.3 minutes**, measured across 236,671 hourly route records that represent **13.4 million vehicle stop observations**.
+    - **Punctuality under the statutory standard is the exception.** Against the Department for Transport window of 1 minute early to 6 minutes late, **55% of observations are on time**, **26% run early**, **10% are late** and **9% are very late**.
+    - **Early running is the hidden reliability problem.** Services between 05:00 and 07:00 have negative median delay, and the earliest Sunday departures run more than 4 minutes ahead of timetable.
+    - **Friday afternoon is the worst window in the week.** Median delay reaches **2.6 minutes at 15:00 on Friday**, more than four times the Saturday figure at the same hour.
+    - **Delay can be predicted in level but not in detail.** A full feature set explains **36 to 39% of the variance** in hourly delay. LightGBM is the stronger learner on all seven prediction tasks, by about 2% lower error on delay itself.
+    - **Route shape is not the cause of rural lateness.** After controlling for weather, time, operator and route, neither circuity nor stop spacing has a detectable effect. Only total route length is significant, at about **0.08 minutes less delay per extra kilometre**, a small effect that most likely reflects timetable padding on longer routes.
+    - **Weather matters less than operators expect.** Clear, overcast and rainy hours all sit within 0.2 minutes of each other in median delay.
     """)
     return
 
@@ -168,15 +155,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ---
-    ## 3. Meteorological Integration: Cardiff Hourly Weather Feed
-
-    ### 🎯 What We Are Doing
-    We ingest hourly meteorological observations from Cardiff (`data2/cardiff_weather_april_to_september_2026.csv`), including temperature (°C), precipitation (mm), relative humidity (%), wind speed (km/h), and atmospheric conditions (Rain, Overcast, Clear).
-
-    ### 💡 Why We Do It This Way
-    - **Weather as an Exogenous Driver of Delay:** In rural Wales, severe weather (heavy rainfall, reduced visibility, gale-force winds) significantly reduces vehicular operating speeds, increases stopping distances, and causes passenger boarding delays.
-    - **Hourly Timestamp Key:** Standardizing weather to `timestamp_hour` allows a seamless 1:1 join onto the bus delay panel, enabling direct empirical modeling of how punctuality degrades under adverse weather conditions.
+    ## 2. Policy context: why a few minutes matter in rural Wales
     """)
     return
 
@@ -184,30 +163,23 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ---
-    ## 4. End-to-End Processing Pipeline: Two-Loop Stream Ingestion & Nearest-Stop Delay
+    In an urban area a bus every five minutes absorbs a delayed vehicle: passengers take the next one. Rural Welsh networks work differently. Services across Powys, Ceredigion, Gwynedd, Carmarthenshire and Pembrokeshire often run on 60 to 120 minute headways, so one late bus can mean two hours of lost access to work, healthcare or education.
 
-    ### 🎯 What We Are Doing
-    We execute an end-to-end data processing pipeline that transforms raw daily SIRI-VM archives directly from `data/siri_zips` into an analysis-ready hourly panel:
-    1. **Two Nested Loops:**
-       - **Outer Loop:** Iterates across daily archives in `data/siri_zips`.
-       - **Inner Loop:** Streams each individual 1-minute snapshot CSV file from the ZIP archive into RAM: `Archive: {_src.name}, CSV: {_csv}`.
-    2. **Uniform 20% Sampling (`sample_frac=0.20`):** Uniformly samples 20% of rows from every snapshot CSV (`pd.read_csv(_csv).sample(frac=0.20, random_state=42)`) to preserve the complete 24-hour temporal distribution without overwhelming memory.
-    3. **Timezone Normalization:** Converts UTC telemetry timestamps into British Summer Time (`Europe/London`), aligning with local clock timetables.
-    4. **GTFS Trip Matching:** Links vehicle pings to scheduled trips via `(operator, line, origin_min, direction_id)` with direction-free fallback.
-    5. **Nearest-Stop Distance & Filtering:** Computes the great-circle Haversine distance from the vehicle position to every stop on that trip, identifies the nearest stop, and retains observations within $200\text{ m}$.
-    6. **Authentic Schedule Delay Calculation:**
-       $$\text{delay\_min} = (t_{\text{observed, local}} - t_{\text{scheduled at closest stop}} + 720) \% 1440 - 720$$
-    7. **Statutory Punctuality Classification & Hourly Panel Aggregation:** Assigns UK Department for Transport (DfT) punctuality bands and aggregates metrics by `(timestamp_hour, day, hour, dow, period, operator, line)`.
-    8. **Weather Enrichment & Parquet Caching:** Merges Cardiff hourly weather and saves the master dataset to `results/hourly_bus_delay_panel.parquet`.
+    Two features of that timetable shape everything that follows.
 
-    ### 💡 Why We Do It This Way
-    - **Streaming Over Monolithic Ingestion:** Storing a month of 1-minute snapshots in RAM would consume >40 GB and crash the system. Streaming file-by-file keeps RAM below 500 MB.
-    - **Why 20% Uniform Sampling:** Bus GPS pings are recorded every 60 seconds. In rural routes, buses take several minutes between stops, so consecutive pings have high autocorrelation. A 20% uniform sample preserves the exact same delay distribution at 5x faster speed.
-    - **Why Europe/London (BST = UTC+1):** GTFS timetables are published in local civil time. Ignoring daylight saving would shift all delay calculations by exactly 60 minutes.
-    - **Why Nearest-Stop Matching Instead of Origin Departure:** Measuring delay against origin departure time computes *cumulative journey elapsed time*, falsely making on-time buses appear 30–45 minutes late mid-route. Comparing against the *nearest stop's scheduled arrival/departure time* measures **true schedule adherence**.
-    - **Why $\le 200\text{ m}$ Filter:** Vehicles traveling in open countryside between stops have no timetable reference. Restricting analysis to $\le 200\text{ m}$ of a scheduled stop isolates authentic dwell and arrival events.
-    - **Why Midnight Rollover Unwrapping:** The formula `(delay + 720) % 1440 - 720` maps clock minute differences across midnight continuously onto the standard interval $(-720, +720]$.
+    - **Early departures are worse than moderate lateness.** A bus that leaves ahead of schedule strands passengers who arrived on time, and on many routes there is no later service that day.
+    - **Variability matters as much as the average.** A service that is consistently four minutes late can be planned around. The same average delay with a wide spread produces missed connections and lost confidence.
+
+    Punctuality is classified with the UK Department for Transport and Traffic Commissioner bands:
+
+    | Band | Definition | Meaning for passengers |
+    |---|---|---|
+    | Early | more than 1 minute before timetable | a service failure: the bus may already have gone |
+    | On time | 1 minute early to 5 minutes 59 seconds late | the national target is 95% of services |
+    | Late | 6 to 14 minutes 59 seconds late | noticeable, usually recoverable |
+    | Very late | 15 minutes or more late | severe breakdown, journey abandoned |
+
+    The analysis answers three questions in sequence. How late are buses, and when? How much of that delay can be predicted from the data? And what part of the remaining variation is genuinely caused by the shape of the route?
     """)
     return
 
@@ -215,7 +187,37 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    *Data Ingestion Ready: Local daily archives in `data/siri_zips` will be processed into `results/hourly_bus_delay_panel.parquet`.*
+    ### 3.3 Building the hourly panel
+
+    The pipeline makes a single pass over the daily archives:
+
+    1. stream each one-minute snapshot from its daily ZIP file;
+    2. sample 20% of rows uniformly from every snapshot;
+    3. convert UTC telemetry timestamps to local civil time (`Europe/London`);
+    4. match every ping to its scheduled trip through the index described above;
+    5. find the nearest stop and keep pings within 200 metres;
+    6. compute delay against the scheduled time at that stop and unwrap it around midnight;
+    7. assign the Department for Transport punctuality band;
+    8. aggregate to route-hours and merge the Cardiff weather observations;
+    9. save the panel as a parquet file that ships with this notebook.
+
+    Streaming rather than loading whole archives keeps memory under 500 MB. Converting to `Europe/London` matters because timetables are published in local civil time, and ignoring British Summer Time would shift every delay by exactly 60 minutes.
+
+    The unit of analysis is one **route-hour**: a row per operator, route and clock hour, carrying the number of observations behind it, mean and median delay, the interquartile range, and the share of observations in each punctuality band. That granularity is what makes the rest of the report possible, but it has one limitation worth stating. Direction of travel is not distinguished, so a row on a route served in both directions combines the two.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    **Cymru Wledig Local Partnership and Innovation Plan (LPIP) · Research placement report**
+    Prepared by Mustafa Aslan · November 2026
+
+    This report examines five months of bus vehicle tracking data from rural and regional Wales, matched to the national timetable and to hourly weather observations. It describes how late buses actually run, tests how much of that delay can be predicted, and isolates the causal effect of route geometry on punctuality.
+
+    **Data:** SIRI-VM vehicle positions, the GTFS timetable feed for Wales, and Cardiff hourly weather.
+    **Code and cached results:** [github.com/mustafaslanCoto/marimo-outputs](https://github.com/mustafaslanCoto/marimo-outputs)
     """)
     return
 
@@ -238,32 +240,40 @@ async def _(io, mo, pd, sys):
 
 
 @app.cell
-def _():
-    # with mo.persistent_cache(name="all_days", save_path="results"):
-    #     hourly_df = load_or_process_hourly_data(
-    #         sample_frac=0.30)
-    return
-
-
-@app.cell
-def _(hourly_df):
-    hourly_df.groupby("hour").agg(
-        count=("median_delay", "count"),
-        median_delay=("median_delay", "median"),
-    ).sort_values(by = "count")
-    return
-
-
-@app.cell
 def _(hourly_df):
     hourly_dff = hourly_df[~hourly_df["hour"].isin([0, 1, 2, 3, 4])]
     return (hourly_dff,)
 
 
+@app.cell
+def _(hourly_dff):
+    q_low, q_high = hourly_dff["mean_delay"].quantile([0.01, 0.99])
+    hourly_dfilter = hourly_dff[hourly_dff["mean_delay"].between(q_low, q_high)].copy()
+    return (hourly_dfilter,)
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ## 4. Descriptive findings: how late are buses, and when?
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    Section 3 produced a panel of route-hours. This section uses it to answer the first descriptive question, one visualisation at a time: what does the distribution of delay look like, and how does it change across the operating day, the week, the season, the operator and the weather?
+
+    Two conventions apply throughout. Percentiles and shares are computed from the underlying vehicle observations, not from unweighted route-hour averages, because a quiet Sunday morning row should not count as much as a busy Friday afternoon one. And every chart shows the full distribution band rather than only the mean, because the width of that band is itself a policy-relevant fact.
+    """)
+    return
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Distribution of delay
+    ### 4.1 The overall delay distribution
     """)
     return
 
@@ -288,16 +298,19 @@ def _(hourly_dff, plt):
 
 
 @app.cell
-def _(hourly_dff):
-    q_low, q_high = hourly_dff["mean_delay"].quantile([0.01, 0.99])
-    hourly_dfilter = hourly_dff[hourly_dff["mean_delay"].between(q_low, q_high)].copy()
-    return (hourly_dfilter,)
+def _(mo):
+    mo.md(r"""
+    **What this shows.** The distribution is centred just above the timetable: the median is 1.1 minutes and the mean 2.4 minutes, so the typical route-hour is close to schedule while the average is pulled to the right by a long late tail. The central half of observations lies between 0.6 minutes early and 3.7 minutes late, and the trimmed window still reaches about 30 minutes at the 99th percentile.
+
+    **Why it matters.** A single average hides the two failure modes that passengers actually experience. A quarter of route-hours run more than half a minute early, and the upper tail contains the very late services that produce missed connections. The rest of this section unpacks that tail by hour, day, month, operator and weather.
+    """)
+    return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Hourly pattern
+    ### 4.2 The operating day
     """)
     return
 
@@ -408,10 +421,25 @@ def _(hourly_dfilter, mo, plt):
     _clean_plot = mo.as_html(_fig)
     plt.close(_fig)
 
-    mo.vstack([
-        mo.md("### Diurnal Delay Distribution Across Operating Hours"),
-        _clean_plot,
-    ])
+    _clean_plot
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    **What this shows.** Early services run ahead of timetable: the median between 05:00 and 07:00 is between 0.7 and 0.2 minutes early, and the lower band shows that on a quarter of days the 05:00 median is close to 2 minutes early. Delay rises sharply after 08:00 and forms a broad plateau from 11:00 to 16:00, where the median sits around 1.6 to 1.7 minutes. It eases after 17:00 even though the number of observations is highest then.
+
+    **Why it matters.** The gap between the morning median and the timetable is the clearest evidence of early running in the data, and it is a service failure that a lateness target alone does not capture. The midday plateau coincides with shopping, school and health appointment travel, when a missed connection is most costly.
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ### 4.3 Day of the week
+    """)
     return
 
 
@@ -529,17 +557,34 @@ def _(hourly_dfilter, mo, np, plt):
     _dow_plot = mo.as_html(_fig)
     plt.close(_fig)
 
-    mo.vstack([
-        mo.md("## Day-of-Week Delay Profile (Monday – Sunday)"),
-        _dow_plot,
-    ])
+    _dow_plot
     return
 
 
 @app.cell
-def _(hourly_df, hourly_dfilter, mo, plt):
-    # 1. Filter out extreme outliers for visualization clarity
-    _months = sorted(hourly_dfilter["month"].dropna().unique())
+def _(mo):
+    mo.md(r"""
+    **What this shows.** Friday is the most delayed day, with a median of 1.1 minutes and an interquartile range of 3.9 minutes. Saturday is the calmest at 0.65 minutes. The middle of the week is tightly grouped between 0.80 and 0.85 minutes, and the wide outer band on every day shows that individual weeks vary much more than the daily averages suggest.
+
+    **Why it matters.** The Friday penalty is a recurring operational pattern, not a one-off event, which makes it a candidate for a timetable fix rather than a monitoring problem. Planning Monday to Thursday as one block and Friday as another would match the data better than a single weekly schedule.
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ### 4.4 Month by month
+    """)
+    return
+
+
+@app.cell
+def _(hourly_dfilter, mo, pd, plt):
+    # 1. Drop months with too little coverage (a partial March tail) and build one series per month
+    _month_counts = hourly_dfilter.groupby("month").size()
+    _months = [m for m in sorted(_month_counts.index) if _month_counts[m] >= 1000]
+    _month_labels = [pd.Timestamp(m).strftime("%b") for m in _months]
     _data_by_month = [
         hourly_dfilter[hourly_dfilter["month"] == _m]["median_delay"].dropna()
         for _m in _months
@@ -552,7 +597,7 @@ def _(hourly_df, hourly_dfilter, mo, plt):
     # 3. Create boxplot with mean displayed
     _bp = _ax.boxplot(
         _data_by_month,
-        tick_labels=_months,
+        tick_labels=_month_labels,
         patch_artist=True,
         showmeans=True,
         showfliers=False,  # Hides individual outlier dots so the plot stays clean
@@ -590,7 +635,7 @@ def _(hourly_df, hourly_dfilter, mo, plt):
 
     # Annotate numeric values for Median and Mean next to each box
     for _i, _m in enumerate(_months):
-        _vals = hourly_df[hourly_df["month"] == _m]["median_delay"].dropna()
+        _vals = hourly_dfilter[hourly_dfilter["month"] == _m]["median_delay"].dropna()
         _med_val = _vals.median()
         _mean_val = _vals.mean()
         _ax.text(
@@ -639,10 +684,25 @@ def _(hourly_df, hourly_dfilter, mo, plt):
     _box_plot = mo.as_html(_fig)
     plt.close(_fig)
 
-    mo.vstack([
-        mo.md("### Monthly Bus Delay Distributions"),
-        _box_plot,
-    ])
+    _box_plot
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    **What this shows.** Median delay moves only between 0.78 and 0.83 minutes from April to August, and the interquartile range stays between 3.0 and 3.3 minutes. August is marginally more variable than spring, but the difference is small compared with the week-to-week variation within any single month.
+
+    **Why it matters.** Punctuality is essentially flat across the season. That weakens the case that summer tourism is a major driver of rural lateness, and it supports treating the Friday and midday patterns in sections 4.3 and 4.5 as structural features of the timetable rather than seasonal artefacts.
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ### 4.5 When congestion bites: day by hour
+    """)
     return
 
 
@@ -681,13 +741,26 @@ def _(DOW_ORDER, hourly_dfilter, mo, np, plt):
     _heat_chart = mo.as_html(_fig)
     plt.close(_fig)
 
-    mo.vstack([
-        mo.md("""
-        ---
-        ## Temporal Congestion Matrix: Day of Week × Operating Hour
-        """),
-        _heat_chart,
-    ])
+    _heat_chart
+
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    **What this shows.** The heatmap localises the weekly peak at Friday 15:00, where median delay reaches 2.6 minutes against a weekday midday norm of about 1.6. The other extreme is Sunday at 05:00, where the median is 4.1 minutes early. Saturday mornings are consistently close to or ahead of schedule, and median delay falls back towards zero after 21:00 on every day.
+
+    **Why it matters.** Two different problems appear in the same matrix. Friday afternoon is a lateness problem driven by road conditions and end-of-week demand. Sunday and early-morning services are an early-running problem driven by schedules that assume more traffic than exists. They call for opposite interventions: more recovery time in the first case, hold-back discipline in the second.
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ### 4.6 Operator comparison
+    """)
     return
 
 
@@ -725,51 +798,26 @@ def _(hourly_dfilter, mo, plt):
     _op_chart = mo.as_html(_fig)
     plt.close(_fig)
 
-    mo.vstack([
-        mo.md("""
-        ---
-        ## Bus Operator Performance
+    _op_chart
 
-        """),
-        _op_chart,
-        # mo.ui.table(op_df),
-    ])
     return
 
 
 @app.cell
-def _():
-    # # --- ROUTE CORRIDOR RELIABILITY ANALYSIS: TOP 10 DELAYED LINES (DERIVED FROM hourly_df) ---
-    # # WHAT: Group hourly_df by (line, operator_name) to rank the 10 most delayed bus routes in rural Wales.
-    # # WHY: Identifies priority corridors for local authority highway interventions, timetable padding, or bus priority lanes.
-    # route_df = (
-    #     hourly_dfilter.groupby(["line", "operator_name"], observed=True)
-    #     .agg(
-    #         observations=("n_obs", "sum"),
-    #         median_delay=("median_delay", "median"),
-    #         mean_delay=("mean_delay", "mean"),
-    #         iqr_delay=("iqr_delay", "median"),
-    #         on_time_pct=("on_time_pct", "mean"),
-    #         very_late_pct=("very_late_pct", "mean"),
-    #     )
-    #     .reset_index()
-    # )
-    # # Filter to corridors with at least 100 observations to avoid statistical noise
-    # top_delayed = route_df[route_df["observations"] >= 100].sort_values("median_delay", ascending=False).head(10).round(2)
+def _(mo):
+    mo.md(r"""
+    **What this shows.** The three operators with substantial coverage sit within a narrow band: Stagecoach Merseyside at 0.66 minutes median, First South and West Wales at 0.77 and Stagecoach South Wales at 0.84. The two operators with the highest medians, First Worcestershire and A2B Cars, have only a few thousand observations and a different operating footprint, so their position should not be read as a like-for-like ranking.
 
-    # mo.vstack([
-    #     mo.md("""
-    #     ---
-    #     ## 12. Route Corridor Reliability Analysis: Top 10 Delayed Lines (Derived from `hourly_df`)
+    **Why it matters.** The major operators differ by less than 0.2 minutes in the median but by much more in their interquartile range, which runs from 2.0 to 3.0 minutes. A league table built on average delay would therefore mislead. Reliability, measured as the spread of delay, separates them more clearly than lateness itself.
+    """)
+    return
 
-    #     ### 🎯 What We Are Doing
-    #     We aggregate `hourly_df` by route line and operator to identify the 10 most delayed bus corridors in rural Wales.
 
-    #     ### 💡 Why We Do It This Way
-    #     Pinpointing chronic low-performing routes provides concrete operational evidence for local transport authorities to prioritize highway interventions, bus priority lanes, or timetable re-timings.
-    #     """),
-    #     mo.ui.table(top_delayed),
-    # ])
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ### 4.7 Weather and temperature
+    """)
     return
 
 
@@ -886,13 +934,7 @@ def _(hourly_dff, hourly_dfilter, mo, np, plt):
         _w_chart = mo.as_html(_fig)
         plt.close(_fig)
 
-        _view = mo.vstack([
-            mo.md(r"""
-            ---
-            ## Weather & Climate Impact Analysis: Temperature & Atmospheric Sensitivity
-            """),
-            _w_chart,
-        ])
+        _view = _w_chart
     else:
         _view = mo.md("*Weather data integration not available.*")
 
@@ -903,26 +945,41 @@ def _(hourly_dff, hourly_dfilter, mo, np, plt):
 @app.cell
 def _(mo):
     mo.md(r"""
-    <!-- ---
-    ## 14. Strategic Policy Recommendations for Cymru Wledig LPIP
+    **What this shows.** The temperature curve rises gently from slightly negative median delay in cool hours to about 1.2 minutes at 20°C and above, then flattens at the hottest extremes. The condition bars are nearly level: clear sky, overcast, drizzle and slight rain all sit between 0.7 and 0.9 minutes, and the differences are smaller than the day-to-day spread within any one condition.
 
-    Based on the empirical findings across the multi-day hourly panel and ambient weather integration:
+    **Why it matters.** These are raw differences, and temperature is strongly confounded with time of day: hot hours fall in the midday plateau, while cool hours fall at night when buses run early. The pattern is therefore consistent with the operating-day effect in section 4.2 rather than with a separate weather penalty. The models in section 5 include weather alongside hour, day and operator, so any independent contribution is captured there.
+    """)
+    return
 
-    #### 1. Enforce Hold-Back Protocols Against Early Departures
-    - **The Issue:** A substantial portion of observations record buses running ahead of timetable ($< -1\text{ min}$), particularly on Sunday mornings and off-peak rural stretches.
-    - **Policy Action:** Electronic ticket machines (ETMs) and telematics should actively chime to prevent drivers from departing rural timing points ahead of the published timetable.
 
-    #### 2. Re-Calibrate Timetables for Friday Afternoon Congestion
-    - **The Issue:** The Day-of-Week $\times$ Hour heatmap confirms a systemic Friday afternoon bottleneck (15:00–18:00) where delays and variability spike.
-    - **Policy Action:** Separate Friday afternoon run-times from standard Monday–Thursday schedules, embedding 6–10 minutes of running time and terminal recovery margin on trunk corridors.
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ## 5. Predictive findings: how much of delay can be explained?
+    """)
+    return
 
-    #### 3. Shift Focus from Average Delay to Unpredictability (IQR)
-    - **The Issue:** Operators with similar median delays exhibit dramatically different Inter-Quartile Ranges (IQR). A route with wide IQR imposes severe passenger stress.
-    - **Policy Action:** Contracts awarded under the *Bus Services (Wales) Act* franchising regime should adopt Reliability Buffer metrics (80th/90th percentile excess wait time) rather than simple averages.
 
-    #### 4. Weather & Summer Tourism Resilience Scheduling
-    - **The Issue:** Punctuality degrades during warm summer periods (>20°C), with "Very Late" service breakdowns rising due to coastal tourist road volume and narrow-lane friction.
-    - **Policy Action:** Introduce seasonal "Summer Peak" timetable variants for scenic and coastal corridors (e.g. Cambrian Coast, Pembrokeshire Coast, Brecon Beacons) with widened running times. -->
+@app.cell
+def _(mo):
+    mo.md(r"""
+    Section 4 describes when delay happens. This section asks whether it can be anticipated. That is a different question, and a more demanding one: it requires the model to reproduce the level and variation of delay in hours it has never seen.
+
+    Two metrics do the work. **R²** is the share of variance in delay that the model reproduces, where 1.0 is perfect and 0.0 is no better than predicting the average. **RMSE** is the typical error in minutes, in the same units as the outcome, so it can be compared directly with the 1 minute median and 4.3 minute interquartile range from section 4.
+
+    The sequence is deliberately incremental: a linear model first, then gradient boosting on the same features. The gap between them measures what flexible machine learning adds.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### 5.1 What the models see
+
+    The modelling table drops identifiers, counters and every punctuality share that is derived from the outcome itself, leaving 17 predictors across four families: time (hour, day of week), operations (operator, route line), weather (temperature, rainfall, humidity, wind, conditions) and route geometry (stops, total distance, stop spacing, circuity, scheduled duration and speed). Categorical columns become indicator variables, which takes the table to 225 columns, of which 224 are predictors.
+
+    One row is still one route-hour. The table below shows the shape of the data the models receive, with route geometry repeated across the hours of a given route and delay-varying hour by hour.
     """)
     return
 
@@ -934,12 +991,37 @@ def _(hourly_dfilter):
     return dum_vars, model_df
 
 
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    ## Overview of data we use in modeling
-    """)
-    return
+@app.cell
+def _(dum_vars, model_df, pd):
+    ## 1. Create dummy variables for categorical features
+    model_dummy =  pd.get_dummies(model_df, columns = dum_vars, drop_first=True, dtype=int, prefix_sep="_")
+    return (model_dummy,)
+
+
+@app.cell
+def _(dum_vars, model_df, pd):
+    ml_model_df =  pd.get_dummies(model_df, columns = dum_vars, drop_first=False, dtype=int, prefix_sep="_")
+    # ml_model_df = model_dummy.dropna().copy()
+    treatment_var1 = "circuity_ratio"
+    treatment_var2 = "avg_stop_spacing_km"
+    treatment_var3 = "total_dist_km"
+    outcome_var = "mean_delay"
+
+    # 70/30 train/test split — tune on training data; test data kept aside for later
+    from sklearn.model_selection import train_test_split
+
+    ml_train_df, ml_test_df = train_test_split(
+        ml_model_df, test_size=0.3, random_state=42
+    )
+    print(f"train: {ml_train_df.shape[0]} rows, test: {ml_test_df.shape[0]} rows")
+    return (
+        ml_test_df,
+        ml_train_df,
+        outcome_var,
+        treatment_var1,
+        treatment_var2,
+        treatment_var3,
+    )
 
 
 @app.cell
@@ -949,16 +1031,21 @@ def _(mo, model_df):
 
 
 @app.cell
-def _(dum_vars, model_df, pd):
-    ## 1. Create dummy variables for categorical features
-    model_dummy =  pd.get_dummies(model_df, columns = dum_vars, drop_first=True, dtype=int, prefix_sep="_")
-    return (model_dummy,)
+def _(mo):
+    mo.md(r"""
+    **What this shows.** Each row is a route-hour, carrying the outcome (`mean_delay`) and the variables that may explain it. Route geometry is a property of the route and repeats across all of its hours, while weather and time change hour by hour.
+
+    **Why it matters.** That structure is what makes the causal question in section 6 delicate. Route geometry cannot be varied independently of the route that carries it, so a naive comparison of long and short routes would mix the effect of geometry with everything else about those routes. The next two sections handle that problem in stages.
+    """)
+    return
 
 
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## Linear Regression Results
+    ### 5.2 Linear benchmark
+
+    The first model is ordinary least squares on the same 224 predictors, with the categorical indicators entering as separate columns. It is not expected to win, but it provides a transparent lower bound and shows how much of the signal is linear.
     """)
     return
 
@@ -1009,465 +1096,53 @@ def _(json, load_json, model_dummy, save_local):
 
 @app.cell
 def _(mo, ols_results):
-    _summary_card = mo.md(rf"""
-    ### OLS Regression Model Results
-    - **Dependent Variable ($$y$$):** `mean_delay` (Minutes)
-    - **Observations ($$N$$):** {int(ols_results.nobs):,}
-    - **R-squared ($$R^2$$):** {ols_results.rsquared:.4f}
-    - **Adjusted $$R^2$$:** {ols_results.rsquared_adj:.4f}
-    - **F-statistic:** {ols_results.fvalue:.2f} ($$p < 0.001$$)
+    _fit_card = mo.md(rf"""
+    | Fit statistic | Value |
+    |---|---|
+    | Observations | {int(ols_results.nobs):,} |
+    | R-squared | {ols_results.rsquared:.4f} |
+    | Adjusted R-squared | {ols_results.rsquared_adj:.4f} |
+    | F-statistic | {ols_results.fvalue:.2f} (p < 0.001) |
     """)
 
     mo.vstack([
-        # _summary_card,
-        mo.Html(getattr(ols_results, "summary_html", None) or ols_results.summary().as_html()),
+        _fit_card,
+        mo.accordion({
+            "Full regression table (224 coefficients)": mo.Html(
+                getattr(ols_results, "summary_html", None)
+                or ols_results.summary().as_html()
+            )
+        }),
     ])
     return
 
 
 @app.cell
-def _(dum_vars, model_df, pd):
-    ml_model_df =  pd.get_dummies(model_df, columns = dum_vars, drop_first=False, dtype=int, prefix_sep="_")
-    # ml_model_df = model_dummy.dropna().copy()
-    treatment_var1 = "circuity_ratio"
-    treatment_var2 = "avg_stop_spacing_km"
-    treatment_var3 = "total_dist_km"
-    outcome_var = "mean_delay"
-
-    # 70/30 train/test split — tune on training data; test data kept aside for later
-    from sklearn.model_selection import train_test_split
-
-    ml_train_df, ml_test_df = train_test_split(
-        ml_model_df, test_size=0.3, random_state=42
-    )
-    print(f"train: {ml_train_df.shape[0]} rows, test: {ml_test_df.shape[0]} rows")
-    return (
-        ml_test_df,
-        ml_train_df,
-        outcome_var,
-        treatment_var1,
-        treatment_var2,
-        treatment_var3,
-    )
-
-
-@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ---
-    ## Causal ML Nuisance Model Tuning (Optuna)
+    **What this shows.** The linear model explains 15.4% of the variation in hourly delay (R² 0.154, adjusted 0.153) across 236,671 observations, with an F statistic of 193.9. That is a real signal rather than noise, but most of the variation is left unexplained.
 
-    Unified hyperparameter optimization for the DoubleML nuisance functions ($E[Y \mid X]$ and $E[D \mid X]$) using 5-fold cross-validation, `MedianPruner`, and disk-cached JSON results in `param_results/`.
+    **Why it matters.** The specification is a useful floor, not a serious forecasting model. It shows that time, route and weather variables carry genuine information, while leaving room for the non-linearities that tree models can capture. The gap between this result and the next is the value added by flexible machine learning.
     """)
     return
 
 
 @app.cell
-def _(data_url, load_json, np, pd, save_local):
-    from typing import Any, Dict, Tuple
-    import json as _json
-    from sklearn.model_selection import KFold
-    from sklearn.metrics import root_mean_squared_error
-    from xgboost import XGBRegressor
-    from lightgbm import LGBMRegressor
-
-
-    def _normalize_model_key(model: str | type) -> str:
-        """Normalize a model name or estimator class to 'xgboost' or 'lightgbm'."""
-        if model is XGBRegressor:
-            return "xgboost"
-        if model is LGBMRegressor:
-            return "lightgbm"
-        if isinstance(model, str):
-            aliases = {
-                "xgb": "xgboost",
-                "xgboost": "xgboost",
-                "lgb": "lightgbm",
-                "lgbm": "lightgbm",
-                "lightgbm": "lightgbm",
-            }
-            key = model.strip().lower()
-            if key in aliases:
-                return aliases[key]
-        raise ValueError(
-            f"Unsupported model {model!r}. Expected 'xgboost' ('xgb') or 'lightgbm' ('lgb'/'lgbm')."
-        )
-
-
-    _MODEL_SPECS = {
-        "xgboost": {
-            "estimator": XGBRegressor,
-            "fixed_params": {
-                "objective": "reg:squarederror",
-                "tree_method": "hist",
-                "n_jobs": 6,
-            },
-            "suggest_params": lambda trial: {
-                "max_bin": trial.suggest_categorical("max_bin", [64, 128, 256]),
-                "n_estimators": trial.suggest_int("n_estimators", 50, 250, step=10),
-                "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.4, log=True),
-                "max_depth": trial.suggest_int("max_depth", 3, 7),
-                "max_leaves": trial.suggest_int("max_leaves", 15, 128),
-                "min_child_weight": trial.suggest_int("min_child_weight", 30, 150),
-                "subsample": trial.suggest_float("subsample", 0.50, 0.99),
-                "colsample_bytree": trial.suggest_float("colsample_bytree", 0.50, 0.99),
-                "colsample_bylevel": trial.suggest_float("colsample_bylevel", 0.50, 0.99),
-                "gamma": trial.suggest_float("gamma", 0.1, 10.0, log=True),
-                "reg_alpha": trial.suggest_float("reg_alpha", 1e-3, 30.0, log=True),
-                "reg_lambda": trial.suggest_float("reg_lambda", 0.1, 30.0, log=True),
-            },
-        },
-        "lightgbm": {
-            "estimator": LGBMRegressor,
-            "fixed_params": {
-                "objective": "regression",
-                "n_jobs": 6,
-                "verbose": -1,
-            },
-            "suggest_params": lambda trial: {
-                "n_estimators": trial.suggest_int("n_estimators", 50, 250, step=10),
-                "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.4, log=True),
-                "max_depth": trial.suggest_int("max_depth", 3, 7),
-                "num_leaves": trial.suggest_int("num_leaves", 15, 128),
-                "min_child_samples": trial.suggest_int("min_child_samples", 10, 100),
-                "subsample": trial.suggest_float("subsample", 0.50, 0.99),
-                "colsample_bytree": trial.suggest_float("colsample_bytree", 0.50, 0.99),
-                "min_split_gain": trial.suggest_float("min_split_gain", 0.0, 10.0),
-                "reg_alpha": trial.suggest_float("reg_alpha", 1e-3, 30.0, log=True),
-                "reg_lambda": trial.suggest_float("reg_lambda", 0.1, 30.0, log=True),
-            },
-        },
-    }
-
-
-    def tune_nuisance(
-        df: pd.DataFrame,
-        target_col: str,
-        exclude_cols: list[str],
-        model: str | type = "xgboost",
-        cache_name: str | None = None,
-        force_retune: bool = False,
-        n_trials: int = 100,
-        random_state: int = 42,
-        n_startup_trials: int = 3,
-        show_progress_bar: bool = True,
-    ) -> Tuple[Dict[str, Any], float]:
-        """
-        Unified Optuna tuning function for XGBoost and LightGBM nuisance regressors.
-
-        Pass `model="xgboost"` (or `"xgb"` / `XGBRegressor`) or `model="lightgbm"`
-        (or `"lgb"` / `"lgbm"` / `LGBMRegressor`). If `cache_name` is provided and
-        `lpip_results/<cache_name>.json` exists next to the notebook (with
-        `force_retune=False`), loads cached parameters without re-running Optuna.
-        The cache is a plain file locally and the notebook's public URL when the
-        notebook runs as a WASM app (e.g. GitHub Pages).
-        """
-        model_key = _normalize_model_key(model)
-        spec = _MODEL_SPECS[model_key]
-        estimator_cls = spec["estimator"]
-
-        # Cache location: the results folder that ships next to the notebook
-        # (data_url = mo.notebook_location() / "lpip_results", see the io_helpers cell).
-        cache_file = (data_url / f"{cache_name}.json") if cache_name else None
-
-        if cache_file and not force_retune:
-            try:
-                saved = load_json(f"{cache_name}.json")
-                print(
-                    f" Loaded cached {model_key} parameters for '{cache_name}' "
-                    f"from {cache_file} (Best score: {saved['best_score']:.4f})"
-                )
-                return saved["best_params"], saved["best_score"]
-            except Exception:
-                pass  # no cache available where this runs; tune below
-
-        # Imported lazily: cache hits (all published runs) never reach this line,
-        # and optuna has no prebuilt Pyodide wheel, so importing it up front makes
-        # the WASM app spend minutes installing packages it will not use.
-        import optuna
-
-        optuna.logging.set_verbosity(optuna.logging.WARNING)
-
-        feature_cols = [c for c in df.columns if c not in exclude_cols and c != target_col]
-        X = df[feature_cols].to_numpy()
-        y = df[target_col].to_numpy()
-
-        fixed_params: Dict[str, Any] = {
-            **spec["fixed_params"],
-            "random_state": random_state,
-        }
-
-        def _objective(trial: optuna.Trial) -> float:
-            params = {
-                **fixed_params,
-                **spec["suggest_params"](trial),
-            }
-
-            kf = KFold(n_splits=3, shuffle=True, random_state=random_state)
-            fold_scores = []
-
-            for fold, (train_idx, val_idx) in enumerate(kf.split(X, y)):
-                est = estimator_cls(**params)
-                est.fit(X[train_idx], y[train_idx])
-                preds = est.predict(X[val_idx])
-
-                score = -float(root_mean_squared_error(y[val_idx], preds))
-                fold_scores.append(score)
-
-                trial.report(float(np.mean(fold_scores)), step=fold)
-                if trial.should_prune():
-                    raise optuna.TrialPruned()
-
-            return float(np.mean(fold_scores))
-
-        pruner = optuna.pruners.MedianPruner(n_startup_trials=n_startup_trials, n_warmup_steps=5)
-        study = optuna.create_study(
-            direction="maximize",
-            sampler=optuna.samplers.TPESampler(seed=random_state, multivariate=True),
-            pruner=pruner,
-        )
-        print(f"Running Optuna tuning ({model_key}) for '{cache_name or target_col}' ({n_trials} trials)...")
-        study.optimize(_objective, n_trials=n_trials, show_progress_bar=show_progress_bar)
-
-        best_full_params = {**fixed_params, **study.best_params}
-
-        if cache_file:
-            _payload = _json.dumps(
-                {"best_params": best_full_params, "best_score": study.best_value}, indent=2
-            )
-            if save_local(f"{cache_name}.json", _payload):
-                print(f" Saved tuned {model_key} parameters to {cache_file}")
-            else:
-                print(" Skipped saving tuned parameters (read-only location)")
-
-        return best_full_params, study.best_value
-
-
-    return LGBMRegressor, XGBRegressor, tune_nuisance
-
-
-@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### XGBoost Nuisance Tuning
-    Tunes all 6 XGBoost nuisance models (outcome and treatment models for `circuity_ratio`, `avg_stop_spacing_km`, and `total_dist_km`) using `tune_nuisance(model="xgboost", ...)`.
+    ### 5.3 Gradient boosting benchmark
     """)
     return
 
 
 @app.cell
-def _(
-    XGBRegressor,
-    ml_train_df,
-    outcome_var,
-    treatment_var1,
-    treatment_var2,
-    treatment_var3,
-    tune_nuisance,
-):
-    best_xgb_params_lc, best_xgb_score_lc = tune_nuisance(
-        model="xgboost",
-        df=ml_train_df,
-        target_col=outcome_var,              # "mean_delay"
-        exclude_cols=[treatment_var1],        # exclude treatment "circuity_ratio"
-        cache_name="tune_xgb_outcome_c",
-        force_retune=False,
-        n_trials=100,
-        random_state=42,
-    )
-
-    best_xgb_lc = XGBRegressor(**best_xgb_params_lc)
-    print("Best XGBoost Nuisance Model Parameters - circuity - for Outcome (mean_delay):")
-
-    best_xgb_params_ls, best_xgb_score_ls = tune_nuisance(
-        model="xgboost",
-        df=ml_train_df,
-        target_col=outcome_var,              # "mean_delay"
-        exclude_cols=[treatment_var2],        # exclude treatment "avg_stop_spacing_km"
-        cache_name="tune_xgb_outcome_s",
-        force_retune=False,
-        n_trials=100,
-        random_state=42,
-    )
-
-    best_xgb_ls = XGBRegressor(**best_xgb_params_ls)
-    print("Best XGBoost Nuisance Model Parameters - avg_stop_spacing_km - for Outcome (mean_delay):")
-
-    best_xgb_params_mc, best_xgb_score_mc = tune_nuisance(
-        model="xgboost",
-        df=ml_train_df,
-        target_col=treatment_var1,            # "circuity_ratio"
-        exclude_cols=[outcome_var],          # exclude outcome "mean_delay"
-        cache_name="tune_xgb_treatment_c",
-        force_retune=False,
-        n_trials=100,
-        random_state=42,
-    )
-
-    best_xgb_mc = XGBRegressor(**best_xgb_params_mc)
-    print("Best XGBoost Nuisance Model Parameters for Treatment (circuity_ratio):")
-
-    best_xgb_params_ms, best_xgb_score_ms = tune_nuisance(
-        model="xgboost",
-        df=ml_train_df,
-        target_col=treatment_var2,            # "avg_stop_spacing_km"
-        exclude_cols=[outcome_var],          # exclude outcome "mean_delay"
-        cache_name="tune_xgb_treatment_s",
-        force_retune=False,
-        n_trials=100,
-        random_state=42,
-    )
-
-    best_xgb_ms = XGBRegressor(**best_xgb_params_ms)
-
-    best_xgb_params_ld, best_xgb_score_ld = tune_nuisance(
-        model="xgboost",
-        df=ml_train_df,
-        target_col=outcome_var,              # "mean_delay"
-        exclude_cols=[treatment_var3],        # exclude treatment "total_dist_km"
-        cache_name="tune_xgb_outcome_d",
-        force_retune=False,
-        n_trials=100,
-        random_state=42,
-    )
-
-    best_xgb_ld = XGBRegressor(**best_xgb_params_ld)
-
-    print("Best parameters for outcome:", best_xgb_params_ld)
-    print("Best score for outcome:", best_xgb_score_ld)
-
-    best_xgb_params_md, best_xgb_score_md = tune_nuisance(
-        model="xgboost",
-        df=ml_train_df,
-        target_col=treatment_var3,            # "total_dist_km"
-        exclude_cols=[outcome_var],          # exclude outcome "mean_delay"
-        cache_name="tune_xgb_treatment_d",
-        force_retune=False,
-        n_trials=100,
-        random_state=42,
-    )
-
-    best_xgb_md = XGBRegressor(**best_xgb_params_md)
-    return (
-        best_xgb_lc,
-        best_xgb_ld,
-        best_xgb_ls,
-        best_xgb_mc,
-        best_xgb_md,
-        best_xgb_ms,
-    )
-
-
-@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### LightGBM Nuisance Tuning
-    Tunes all 6 LightGBM nuisance models (outcome and treatment models for `circuity_ratio`, `avg_stop_spacing_km`, and `total_dist_km`) using `tune_nuisance(model="lightgbm", ...)`.
+    The second benchmark is gradient boosting, which learns non-linear effects and interactions without being told their form. For each prediction task, XGBoost and LightGBM are tuned by automatic hyperparameter search (Optuna) using cross-validation on the training set only, then scored once on the held-out test set.
+
+    The table below reports the two all-feature models. The tabs that follow break the same comparison down by task: delay with one geometry variable excluded, and the geometry variables themselves, which is exactly the nuisance work the causal model in section 6 requires.
     """)
     return
-
-
-@app.cell
-def _(
-    LGBMRegressor,
-    ml_train_df,
-    outcome_var,
-    treatment_var1,
-    treatment_var2,
-    treatment_var3,
-    tune_nuisance,
-):
-    best_lgb_params_lc, best_lgb_score_lc = tune_nuisance(
-        model="lightgbm",
-        df=ml_train_df,
-        target_col=outcome_var,              # "mean_delay"
-        exclude_cols=[treatment_var1],        # exclude treatment "circuity_ratio"
-        cache_name="tune_lgb_outcome_c",
-        force_retune=False,
-        n_trials=100,
-        random_state=42,
-    )
-
-    best_lgb_lc = LGBMRegressor(**best_lgb_params_lc)
-    print("Best LightGBM Nuisance Model Parameters - circuity - for Outcome (mean_delay):")
-
-    best_lgb_params_ls, best_lgb_score_ls = tune_nuisance(
-        model="lightgbm",
-        df=ml_train_df,
-        target_col=outcome_var,              # "mean_delay"
-        exclude_cols=[treatment_var2],        # exclude treatment "avg_stop_spacing_km"
-        cache_name="tune_lgb_outcome_s",
-        force_retune=False,
-        n_trials=100,
-        random_state=42,
-    )
-
-    best_lgb_ls = LGBMRegressor(**best_lgb_params_ls)
-    print("Best LightGBM Nuisance Model Parameters - avg_stop_spacing_km - for Outcome (mean_delay):")
-
-    best_lgb_params_mc, best_lgb_score_mc = tune_nuisance(
-        model="lightgbm",
-        df=ml_train_df,
-        target_col=treatment_var1,            # "circuity_ratio"
-        exclude_cols=[outcome_var],          # exclude outcome "mean_delay"
-        cache_name="tune_lgb_treatment_c",
-        force_retune=False,
-        n_trials=100,
-        random_state=42,
-    )
-
-    best_lgb_mc = LGBMRegressor(**best_lgb_params_mc)
-    print("Best LightGBM Nuisance Model Parameters for Treatment (circuity_ratio):")
-
-    best_lgb_params_ms, best_lgb_score_ms = tune_nuisance(
-        model="lightgbm",
-        df=ml_train_df,
-        target_col=treatment_var2,            # "avg_stop_spacing_km"
-        exclude_cols=[outcome_var],          # exclude outcome "mean_delay"
-        cache_name="tune_lgb_treatment_s",
-        force_retune=False,
-        n_trials=100,
-        random_state=42,
-    )
-
-    best_lgb_ms = LGBMRegressor(**best_lgb_params_ms)
-
-    best_lgb_params_ld, best_lgb_score_ld = tune_nuisance(
-        model="lightgbm",
-        df=ml_train_df,
-        target_col=outcome_var,              # "mean_delay"
-        exclude_cols=[treatment_var3],        # exclude treatment "total_dist_km"
-        cache_name="tune_lgb_outcome_d",
-        force_retune=False,
-        n_trials=100,
-        random_state=42,
-    )
-
-    best_lgb_ld = LGBMRegressor(**best_lgb_params_ld)
-
-    print("Best parameters for outcome:", best_lgb_params_ld)
-    print("Best score for outcome:", best_lgb_score_ld)
-
-    best_lgb_params_md, best_lgb_score_md = tune_nuisance(
-        model="lightgbm",
-        df=ml_train_df,
-        target_col=treatment_var3,            # "total_dist_km"
-        exclude_cols=[outcome_var],          # exclude outcome "mean_delay"
-        cache_name="tune_lgb_treatment_d",
-        force_retune=False,
-        n_trials=100,
-        random_state=42,
-    )
-
-    best_lgb_md = LGBMRegressor(**best_lgb_params_md)
-    return (
-        best_lgb_lc,
-        best_lgb_ld,
-        best_lgb_ls,
-        best_lgb_mc,
-        best_lgb_md,
-        best_lgb_ms,
-    )
 
 
 @app.cell
@@ -1750,12 +1425,6 @@ def _(
         ignore_index=True,
     )
 
-    target_selector = mo.ui.dropdown(
-        options=["All Targets"] + list(accuracy_comparison_df["Target Variable"]),
-        value="All Targets",
-        label="🎯 Select Target Variable:",
-    )
-
     # Tabbed interface for in-cell interactive browsing
     _tabs_dict = {
         "All Targets": mo.ui.table(accuracy_comparison_df, selection=None),
@@ -1764,11 +1433,60 @@ def _(
         _tabs_dict[_row["Target Variable"]] = mo.ui.table(pd.DataFrame([_row]), selection=None)
 
     interactive_accuracy_tabs = mo.ui.tabs(_tabs_dict)
+    interactive_accuracy_tabs
 
-    mo.vstack([
-        mo.md("### 📊 Test Data Accuracy Comparison: XGBoost vs LightGBM (RMSE & R2)"),
-        interactive_accuracy_tabs,
-    ])
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    **What this shows.** Both gradient boosting models roughly double the explanatory power of the linear benchmark. LightGBM reaches a test R² of 0.39 and an RMSE of 5.02 minutes with all features, against 0.36 and 5.13 for XGBoost. LightGBM wins all seven tasks, although the gain on delay itself is small at about 2% lower RMSE. The larger gains, 25% on stop spacing and 19% on circuity, appear where the target is close to a deterministic function of the timetable.
+
+    **Why it matters.** The ceiling is the important number. Even with 224 predictors, about 61% of hourly delay variation remains unexplained, which points to causes the data does not record: incidents, roadworks, breakdowns, driver behaviour and passenger demand. Punctuality will not be fixed by better prediction alone. The causal analysis in section 6 narrows the question to the part of the variation that route design can actually influence.
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ## 6. Causal findings: does route geometry cause delay?
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    Prediction and causation answer different questions. A model that predicts delay well may still be useless for policy, because it does not say what happens to delay if a route is redesigned. This section asks the causal question directly for three features that planners can actually influence: how indirect a route is, how far apart its stops are, and how long it is.
+
+    The problem is confounding. Long routes differ from short ones not only in length but in the operators that run them, the hours they serve and the weather they face. A naive regression would attribute all of that to geometry. Double machine learning removes the confounding by learning it explicitly with flexible models, then estimating the geometry effect from what those models cannot explain.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### 6.1 Method: double machine learning
+
+    The analysis uses the partially linear regression form of double machine learning (Chernozhukov et al., 2018). The outcome and the treatment are each split into a part explained by the controls and a residual part:
+
+    $$Y = \theta D + g(X) + U, \qquad D = m(X) + V$$
+
+    Here $Y$ is hourly mean delay, $D$ is one route geometry measure at a time, and $X$ is the full set of controls: weather, hour, day of week, operator and route. The nuisance functions $g(X)$ and $m(X)$ are learned with gradient boosting, and $\theta$ is estimated from their residuals using three-fold cross-fitting with five repetitions. Cross-fitting removes the bias that would arise if the same observations were used both to learn the nuisance functions and to estimate the effect.
+
+    The quantity $\theta$ has a direct reading: the change in hourly delay, in minutes, associated with a one-unit change in the geometry measure, holding weather, time, operator and route constant. Three treatments are tested separately:
+
+    | Treatment | Unit | Interpretation |
+    |---|---|---|
+    | `circuity_ratio` | ratio | route length relative to the straight-line distance to the farthest point reached |
+    | `avg_stop_spacing_km` | km | average distance between consecutive stops |
+    | `total_dist_km` | km | cumulative length of the route |
+
+    Each treatment is estimated twice, once with XGBoost nuisance models and once with LightGBM, so the result can be judged on whether the two learners agree rather than on a single specification. A coefficient counts as evidence only if its 95% confidence interval excludes zero and both learners point the same way.
+    """)
     return
 
 
@@ -1878,34 +1596,15 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    <!-- ## Double Machine Learning (DML) Mathematical Formulation
-    ### Partially Linear Regression (PLR) Framework
-
-    To identify the true causal effect of network geometry on delay without suffering from omitted-variable bias or the curse of dimensionality, we employ the **Chernozhukov et al. (2018)** Double/Debiased Machine Learning framework.
-
-    ---
-
-    ### 1. Structural Equation Model
-
-    We specify a Partially Linear Regression (PLR) model:
-
-    $$Y = \theta D + g(X) + U, \quad \mathbb{E}[U \mid D, X] = 0$$
-
-    $$D = m(X) + V, \quad \mathbb{E}[V \mid X] = 0$$
-
-    * **$$Y$$ (Outcome):** Hourly corridor `mean_delay`
-    * **$$D$$ (Treatment):** Geometric feature (e.g. `circuity_ratio`, `avg_stop_spacing_km`, `total_dist_km`)
-    * **$$\theta$$ (Target Parameter):** Causal marginal impact of treatment on delay
-    * **$$X$$ (High-Dimensional Controls):** Weather, temporal fixed effects (hour, day of week), operator, and line indicators
-    * **$$g(X), m(X)$$ (Nuisance Functions):** Flexible, non-linear conditional expectations learned via XGBoost -->
+    ### 6.2 Results
     """)
     return
 
 
-@app.cell(hide_code=True)
+@app.cell
 def _(mo):
     mo.md(r"""
-    ## Causal Machine Learning Results: Causal impact of circuity, avg_stop_spacing and total_dist_km on mean delay
+    Each row is one learner and one treatment. `coef` is the estimated causal effect in minutes per unit of the treatment, `std err` and `t` describe its precision, `P>|t|` is the two-sided p-value, and the last two columns give the 95% confidence interval.
     """)
     return
 
@@ -1933,6 +1632,494 @@ def _(
         axis=0,
     ).round(3)
     dml_summary
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    **What this shows.** Circuity and stop spacing are not distinguishable from zero. Their coefficients change sign between the two learners, and every confidence interval spans zero. Total route distance is the exception: both learners agree on a negative and statistically significant effect, at 0.086 minutes per kilometre with XGBoost (95% confidence interval −0.125 to −0.047) and 0.076 with LightGBM (−0.117 to −0.036).
+
+    **Why it matters.** The effect is real but small. A route 10 kilometres longer is associated with roughly 0.8 minutes less delay in a given hour, against a standard deviation of 6.5 minutes in the outcome. The negative sign is best read as timetable slack rather than an operational advantage: longer rural routes tend to carry more recovery time per stop, which offsets the accumulated journey time. It is not a case for lengthening routes.
+
+    The policy conclusion is the opposite of the common intuition that indirect, winding routes are the main source of rural lateness. On this panel, route shape is not the driver. What remains is the timetable, the operating context and the unrecorded incidents that section 5 could not capture.
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ## 7. What this means for policy
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    Five implications follow directly from the results, each tied to evidence in the preceding sections.
+
+    1. **Treat early running as a failure in its own right.** One observation in four is early, morning services have negative median delay, and the earliest Sunday departures run more than four minutes ahead of timetable. A punctuality target built only around lateness will never see this. Hold-back discipline at rural timing points, and an early-share indicator reported alongside on-time performance, would make the problem visible and manageable.
+
+    2. **Give Friday afternoon its own running times.** The weekly peak is Friday at 15:00, at 2.6 minutes median delay and a 3.9 minute interquartile range, against about 1.6 minutes at weekday midday. A separate Friday schedule with additional recovery time on the worst corridors would address a recurring pattern rather than a random bad day.
+
+    3. **Judge operators on reliability, not on averages.** The major operators differ by less than 0.2 minutes in median delay but by around a minute in interquartile range. Contract metrics based on the 80th or 90th percentile of excess wait time would reward predictable service rather than a good average that hides bad days.
+
+    4. **Do not expect route redesign to fix punctuality.** Circuity and stop spacing have no detectable causal effect. The only significant geometry effect is small, and its sign reflects timetable slack rather than an advantage of longer routes. The levers that remain are timetable padding, traffic management, bus priority and operational control.
+
+    5. **Do not plan around weather, and do close the data gap.** Weather conditions differ by less than a quarter of a minute in median delay once time of day is considered. What the models cannot explain, roughly 60% of the variation, points instead to incidents, roadworks, breakdowns and demand, none of which the panel records. Linking the panel to operational incident logs is the single most valuable next data investment.
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ## 8. Reproducibility
+    """)
+    return
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    The notebook is both the report and the script that produces it. It loads the hourly panel from `lpip_data/hourly_bus_delay_panel.parquet` beside the notebook and the saved results from `lpip_results/`, resolving both through `mo.notebook_location()`. The same code therefore runs locally and as a WebAssembly app on GitHub Pages.
+
+    No model is refitted in the browser. The tuning parameters, accuracy comparison, OLS summary and six causal tables are stored as JSON and CSV files, and the cells fall back to refitting only when a cache is missing. That keeps the page usable while preserving full reproducibility: delete `lpip_results/`, set the corresponding `rerun` or `force_retune` flag to `True`, and every table is rebuilt from the panel.
+
+    The environment is declared in the notebook header with nine dependencies. `doubleml` and `optuna` are imported lazily inside the refitting functions, so a reader who only views the results never pays their install cost.
+    """)
+    return
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### 8.1 Automatic tuning of the nuisance models
+
+    The nuisance functions in section 6 are not specified by hand. For each outcome and treatment combination, a gradient boosting model is tuned over the parameters that control tree depth, learning rate, regularisation and sampling, using cross-validation on the training set only. Tuning uses a pruning search (Optuna) that stops unpromising trials early, and every finished search is cached as JSON in `lpip_results/`.
+
+    The cell below holds the shared tuning logic. The two subsections that follow apply it to the six XGBoost and six LightGBM models and report the selected parameters.
+    """)
+    return
+
+
+@app.cell
+def _(data_url, load_json, np, pd, save_local):
+    from typing import Any, Dict, Tuple
+    import json as _json
+    from sklearn.model_selection import KFold
+    from sklearn.metrics import root_mean_squared_error
+    from xgboost import XGBRegressor
+    from lightgbm import LGBMRegressor
+
+
+    def _normalize_model_key(model: str | type) -> str:
+        """Normalize a model name or estimator class to 'xgboost' or 'lightgbm'."""
+        if model is XGBRegressor:
+            return "xgboost"
+        if model is LGBMRegressor:
+            return "lightgbm"
+        if isinstance(model, str):
+            aliases = {
+                "xgb": "xgboost",
+                "xgboost": "xgboost",
+                "lgb": "lightgbm",
+                "lgbm": "lightgbm",
+                "lightgbm": "lightgbm",
+            }
+            key = model.strip().lower()
+            if key in aliases:
+                return aliases[key]
+        raise ValueError(
+            f"Unsupported model {model!r}. Expected 'xgboost' ('xgb') or 'lightgbm' ('lgb'/'lgbm')."
+        )
+
+
+    _MODEL_SPECS = {
+        "xgboost": {
+            "estimator": XGBRegressor,
+            "fixed_params": {
+                "objective": "reg:squarederror",
+                "tree_method": "hist",
+                "n_jobs": 6,
+            },
+            "suggest_params": lambda trial: {
+                "max_bin": trial.suggest_categorical("max_bin", [64, 128, 256]),
+                "n_estimators": trial.suggest_int("n_estimators", 50, 250, step=10),
+                "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.4, log=True),
+                "max_depth": trial.suggest_int("max_depth", 3, 7),
+                "max_leaves": trial.suggest_int("max_leaves", 15, 128),
+                "min_child_weight": trial.suggest_int("min_child_weight", 30, 150),
+                "subsample": trial.suggest_float("subsample", 0.50, 0.99),
+                "colsample_bytree": trial.suggest_float("colsample_bytree", 0.50, 0.99),
+                "colsample_bylevel": trial.suggest_float("colsample_bylevel", 0.50, 0.99),
+                "gamma": trial.suggest_float("gamma", 0.1, 10.0, log=True),
+                "reg_alpha": trial.suggest_float("reg_alpha", 1e-3, 30.0, log=True),
+                "reg_lambda": trial.suggest_float("reg_lambda", 0.1, 30.0, log=True),
+            },
+        },
+        "lightgbm": {
+            "estimator": LGBMRegressor,
+            "fixed_params": {
+                "objective": "regression",
+                "n_jobs": 6,
+                "verbose": -1,
+            },
+            "suggest_params": lambda trial: {
+                "n_estimators": trial.suggest_int("n_estimators", 50, 250, step=10),
+                "learning_rate": trial.suggest_float("learning_rate", 0.01, 0.4, log=True),
+                "max_depth": trial.suggest_int("max_depth", 3, 7),
+                "num_leaves": trial.suggest_int("num_leaves", 15, 128),
+                "min_child_samples": trial.suggest_int("min_child_samples", 10, 100),
+                "subsample": trial.suggest_float("subsample", 0.50, 0.99),
+                "colsample_bytree": trial.suggest_float("colsample_bytree", 0.50, 0.99),
+                "min_split_gain": trial.suggest_float("min_split_gain", 0.0, 10.0),
+                "reg_alpha": trial.suggest_float("reg_alpha", 1e-3, 30.0, log=True),
+                "reg_lambda": trial.suggest_float("reg_lambda", 0.1, 30.0, log=True),
+            },
+        },
+    }
+
+
+    def tune_nuisance(
+        df: pd.DataFrame,
+        target_col: str,
+        exclude_cols: list[str],
+        model: str | type = "xgboost",
+        cache_name: str | None = None,
+        force_retune: bool = False,
+        n_trials: int = 100,
+        random_state: int = 42,
+        n_startup_trials: int = 3,
+        show_progress_bar: bool = True,
+    ) -> Tuple[Dict[str, Any], float]:
+        """
+        Unified Optuna tuning function for XGBoost and LightGBM nuisance regressors.
+
+        Pass `model="xgboost"` (or `"xgb"` / `XGBRegressor`) or `model="lightgbm"`
+        (or `"lgb"` / `"lgbm"` / `LGBMRegressor`). If `cache_name` is provided and
+        `lpip_results/<cache_name>.json` exists next to the notebook (with
+        `force_retune=False`), loads cached parameters without re-running Optuna.
+        The cache is a plain file locally and the notebook's public URL when the
+        notebook runs as a WASM app (e.g. GitHub Pages).
+        """
+        model_key = _normalize_model_key(model)
+        spec = _MODEL_SPECS[model_key]
+        estimator_cls = spec["estimator"]
+
+        # Cache location: the results folder that ships next to the notebook
+        # (data_url = mo.notebook_location() / "lpip_results", see the io_helpers cell).
+        cache_file = (data_url / f"{cache_name}.json") if cache_name else None
+
+        if cache_file and not force_retune:
+            try:
+                saved = load_json(f"{cache_name}.json")
+                print(
+                    f" Loaded cached {model_key} parameters for '{cache_name}' "
+                    f"from {cache_file} (Best score: {saved['best_score']:.4f})"
+                )
+                return saved["best_params"], saved["best_score"]
+            except Exception:
+                pass  # no cache available where this runs; tune below
+
+        # Imported lazily: cache hits (all published runs) never reach this line,
+        # and optuna has no prebuilt Pyodide wheel, so importing it up front makes
+        # the WASM app spend minutes installing packages it will not use.
+        import optuna
+
+        optuna.logging.set_verbosity(optuna.logging.WARNING)
+
+        feature_cols = [c for c in df.columns if c not in exclude_cols and c != target_col]
+        X = df[feature_cols].to_numpy()
+        y = df[target_col].to_numpy()
+
+        fixed_params: Dict[str, Any] = {
+            **spec["fixed_params"],
+            "random_state": random_state,
+        }
+
+        def _objective(trial: optuna.Trial) -> float:
+            params = {
+                **fixed_params,
+                **spec["suggest_params"](trial),
+            }
+
+            kf = KFold(n_splits=3, shuffle=True, random_state=random_state)
+            fold_scores = []
+
+            for fold, (train_idx, val_idx) in enumerate(kf.split(X, y)):
+                est = estimator_cls(**params)
+                est.fit(X[train_idx], y[train_idx])
+                preds = est.predict(X[val_idx])
+
+                score = -float(root_mean_squared_error(y[val_idx], preds))
+                fold_scores.append(score)
+
+                trial.report(float(np.mean(fold_scores)), step=fold)
+                if trial.should_prune():
+                    raise optuna.TrialPruned()
+
+            return float(np.mean(fold_scores))
+
+        pruner = optuna.pruners.MedianPruner(n_startup_trials=n_startup_trials, n_warmup_steps=5)
+        study = optuna.create_study(
+            direction="maximize",
+            sampler=optuna.samplers.TPESampler(seed=random_state, multivariate=True),
+            pruner=pruner,
+        )
+        print(f"Running Optuna tuning ({model_key}) for '{cache_name or target_col}' ({n_trials} trials)...")
+        study.optimize(_objective, n_trials=n_trials, show_progress_bar=show_progress_bar)
+
+        best_full_params = {**fixed_params, **study.best_params}
+
+        if cache_file:
+            _payload = _json.dumps(
+                {"best_params": best_full_params, "best_score": study.best_value}, indent=2
+            )
+            if save_local(f"{cache_name}.json", _payload):
+                print(f" Saved tuned {model_key} parameters to {cache_file}")
+            else:
+                print(" Skipped saving tuned parameters (read-only location)")
+
+        return best_full_params, study.best_value
+
+
+    return LGBMRegressor, XGBRegressor, tune_nuisance
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### 8.2 XGBoost nuisance models
+
+    Six models are tuned with XGBoost: three outcome models for delay with one treatment excluded at a time, and three treatment models for the geometry variables. The parameters below are loaded from cache rather than refitted.
+    """)
+    return
+
+
+@app.cell
+def _(
+    XGBRegressor,
+    ml_train_df,
+    outcome_var,
+    treatment_var1,
+    treatment_var2,
+    treatment_var3,
+    tune_nuisance,
+):
+    best_xgb_params_lc, best_xgb_score_lc = tune_nuisance(
+        model="xgboost",
+        df=ml_train_df,
+        target_col=outcome_var,              # "mean_delay"
+        exclude_cols=[treatment_var1],        # exclude treatment "circuity_ratio"
+        cache_name="tune_xgb_outcome_c",
+        force_retune=False,
+        n_trials=100,
+        random_state=42,
+    )
+
+    best_xgb_lc = XGBRegressor(**best_xgb_params_lc)
+    print("Best XGBoost Nuisance Model Parameters - circuity - for Outcome (mean_delay):")
+
+    best_xgb_params_ls, best_xgb_score_ls = tune_nuisance(
+        model="xgboost",
+        df=ml_train_df,
+        target_col=outcome_var,              # "mean_delay"
+        exclude_cols=[treatment_var2],        # exclude treatment "avg_stop_spacing_km"
+        cache_name="tune_xgb_outcome_s",
+        force_retune=False,
+        n_trials=100,
+        random_state=42,
+    )
+
+    best_xgb_ls = XGBRegressor(**best_xgb_params_ls)
+    print("Best XGBoost Nuisance Model Parameters - avg_stop_spacing_km - for Outcome (mean_delay):")
+
+    best_xgb_params_mc, best_xgb_score_mc = tune_nuisance(
+        model="xgboost",
+        df=ml_train_df,
+        target_col=treatment_var1,            # "circuity_ratio"
+        exclude_cols=[outcome_var],          # exclude outcome "mean_delay"
+        cache_name="tune_xgb_treatment_c",
+        force_retune=False,
+        n_trials=100,
+        random_state=42,
+    )
+
+    best_xgb_mc = XGBRegressor(**best_xgb_params_mc)
+    print("Best XGBoost Nuisance Model Parameters for Treatment (circuity_ratio):")
+
+    best_xgb_params_ms, best_xgb_score_ms = tune_nuisance(
+        model="xgboost",
+        df=ml_train_df,
+        target_col=treatment_var2,            # "avg_stop_spacing_km"
+        exclude_cols=[outcome_var],          # exclude outcome "mean_delay"
+        cache_name="tune_xgb_treatment_s",
+        force_retune=False,
+        n_trials=100,
+        random_state=42,
+    )
+
+    best_xgb_ms = XGBRegressor(**best_xgb_params_ms)
+
+    best_xgb_params_ld, best_xgb_score_ld = tune_nuisance(
+        model="xgboost",
+        df=ml_train_df,
+        target_col=outcome_var,              # "mean_delay"
+        exclude_cols=[treatment_var3],        # exclude treatment "total_dist_km"
+        cache_name="tune_xgb_outcome_d",
+        force_retune=False,
+        n_trials=100,
+        random_state=42,
+    )
+
+    best_xgb_ld = XGBRegressor(**best_xgb_params_ld)
+
+    print("Best parameters for outcome:", best_xgb_params_ld)
+    print("Best score for outcome:", best_xgb_score_ld)
+
+    best_xgb_params_md, best_xgb_score_md = tune_nuisance(
+        model="xgboost",
+        df=ml_train_df,
+        target_col=treatment_var3,            # "total_dist_km"
+        exclude_cols=[outcome_var],          # exclude outcome "mean_delay"
+        cache_name="tune_xgb_treatment_d",
+        force_retune=False,
+        n_trials=100,
+        random_state=42,
+    )
+
+    best_xgb_md = XGBRegressor(**best_xgb_params_md)
+    return (
+        best_xgb_lc,
+        best_xgb_ld,
+        best_xgb_ls,
+        best_xgb_mc,
+        best_xgb_md,
+        best_xgb_ms,
+    )
+
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    ### 8.3 LightGBM nuisance models
+
+    The same six models are tuned again with LightGBM, so that every causal estimate in section 6 is available from two independent learners.
+    """)
+    return
+
+
+@app.cell
+def _(
+    LGBMRegressor,
+    ml_train_df,
+    outcome_var,
+    treatment_var1,
+    treatment_var2,
+    treatment_var3,
+    tune_nuisance,
+):
+    best_lgb_params_lc, best_lgb_score_lc = tune_nuisance(
+        model="lightgbm",
+        df=ml_train_df,
+        target_col=outcome_var,              # "mean_delay"
+        exclude_cols=[treatment_var1],        # exclude treatment "circuity_ratio"
+        cache_name="tune_lgb_outcome_c",
+        force_retune=False,
+        n_trials=100,
+        random_state=42,
+    )
+
+    best_lgb_lc = LGBMRegressor(**best_lgb_params_lc)
+    print("Best LightGBM Nuisance Model Parameters - circuity - for Outcome (mean_delay):")
+
+    best_lgb_params_ls, best_lgb_score_ls = tune_nuisance(
+        model="lightgbm",
+        df=ml_train_df,
+        target_col=outcome_var,              # "mean_delay"
+        exclude_cols=[treatment_var2],        # exclude treatment "avg_stop_spacing_km"
+        cache_name="tune_lgb_outcome_s",
+        force_retune=False,
+        n_trials=100,
+        random_state=42,
+    )
+
+    best_lgb_ls = LGBMRegressor(**best_lgb_params_ls)
+    print("Best LightGBM Nuisance Model Parameters - avg_stop_spacing_km - for Outcome (mean_delay):")
+
+    best_lgb_params_mc, best_lgb_score_mc = tune_nuisance(
+        model="lightgbm",
+        df=ml_train_df,
+        target_col=treatment_var1,            # "circuity_ratio"
+        exclude_cols=[outcome_var],          # exclude outcome "mean_delay"
+        cache_name="tune_lgb_treatment_c",
+        force_retune=False,
+        n_trials=100,
+        random_state=42,
+    )
+
+    best_lgb_mc = LGBMRegressor(**best_lgb_params_mc)
+    print("Best LightGBM Nuisance Model Parameters for Treatment (circuity_ratio):")
+
+    best_lgb_params_ms, best_lgb_score_ms = tune_nuisance(
+        model="lightgbm",
+        df=ml_train_df,
+        target_col=treatment_var2,            # "avg_stop_spacing_km"
+        exclude_cols=[outcome_var],          # exclude outcome "mean_delay"
+        cache_name="tune_lgb_treatment_s",
+        force_retune=False,
+        n_trials=100,
+        random_state=42,
+    )
+
+    best_lgb_ms = LGBMRegressor(**best_lgb_params_ms)
+
+    best_lgb_params_ld, best_lgb_score_ld = tune_nuisance(
+        model="lightgbm",
+        df=ml_train_df,
+        target_col=outcome_var,              # "mean_delay"
+        exclude_cols=[treatment_var3],        # exclude treatment "total_dist_km"
+        cache_name="tune_lgb_outcome_d",
+        force_retune=False,
+        n_trials=100,
+        random_state=42,
+    )
+
+    best_lgb_ld = LGBMRegressor(**best_lgb_params_ld)
+
+    print("Best parameters for outcome:", best_lgb_params_ld)
+    print("Best score for outcome:", best_lgb_score_ld)
+
+    best_lgb_params_md, best_lgb_score_md = tune_nuisance(
+        model="lightgbm",
+        df=ml_train_df,
+        target_col=treatment_var3,            # "total_dist_km"
+        exclude_cols=[outcome_var],          # exclude outcome "mean_delay"
+        cache_name="tune_lgb_treatment_d",
+        force_retune=False,
+        n_trials=100,
+        random_state=42,
+    )
+
+    best_lgb_md = LGBMRegressor(**best_lgb_params_md)
+    return (
+        best_lgb_lc,
+        best_lgb_ld,
+        best_lgb_ls,
+        best_lgb_mc,
+        best_lgb_md,
+        best_lgb_ms,
+    )
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    *Everything in this report is generated by the cells above. Cached results were produced with the same code on the full training set; deleting `lpip_results/` and setting the refit flags to `True` rebuilds them from the panel.*
+    """)
     return
 
 
