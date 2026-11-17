@@ -1,13 +1,10 @@
 # /// script
 # requires-python = ">=3.13,<3.15"
 # dependencies = [
-#     "doubleml>=0.11.4",
 #     "lightgbm>=4.6.0",
 #     "marimo>=0.23.3",
-#     "marimo-lens>=0.2.3",
 #     "matplotlib>=3.11.2",
 #     "numpy>=2.5.4",
-#     "optuna>=5.0.0",
 #     "pandas>=3.1.0",
 #     "pyarrow>=14.0.0",
 #     "scikit-learn>=1.9.1",
@@ -1069,7 +1066,6 @@ def _(mo):
 def _(data_url, load_json, np, pd, save_local):
     from typing import Any, Dict, Tuple
     import json as _json
-    import optuna
     from sklearn.model_selection import KFold
     from sklearn.metrics import root_mean_squared_error
     from xgboost import XGBRegressor
@@ -1184,6 +1180,11 @@ def _(data_url, load_json, np, pd, save_local):
                 return saved["best_params"], saved["best_score"]
             except Exception:
                 pass  # no cache available where this runs; tune below
+
+        # Imported lazily: cache hits (all published runs) never reach this line,
+        # and optuna has no prebuilt Pyodide wheel, so importing it up front makes
+        # the WASM app spend minutes installing packages it will not use.
+        import optuna
 
         optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -1794,8 +1795,6 @@ def _(
     treatment_var2,
     treatment_var3,
 ):
-    import doubleml as dml
-
     # 1. Define clean modeling data (dropna to ensure complete cases for DML)
 
     # 2. Package into DoubleMLData
@@ -1803,6 +1802,10 @@ def _(
     # - d_cols: treatment variable (can be continuous or binary, e.g. 'precipitation_mm')
     # - x_cols: confounders/controls (all remaining numerical and dummy columns)
     def perform_dml(out_var, treatment_var, _ml_l, _ml_m, data_df=None):
+        # Imported lazily: dml_result loads cached summaries for every published
+        # run, and doubleml is a slow micropip install in Pyodide/WASM.
+        import doubleml as dml
+
         _df = data_df if data_df is not None else ml_train_df
         feature_cols = [c for c in _df.columns if c not in [out_var, treatment_var]]
 

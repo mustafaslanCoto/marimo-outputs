@@ -75,7 +75,7 @@ jobs:
           cp -r apps/public _site/apps/ 2>/dev/null || true
 
           # Copy data/results folders that notebooks load at runtime via
-          # mo.notebook_location() (for example panctuality_marimo.py reads
+          # mo.notebook_location() (for example panctuality_report.py reads
           # lpip_data/hourly_bus_delay_panel.parquet and lpip_results/*.json|csv).
           # Without these, the published WASM app gets a 404 HTML page instead
           # of the file and pandas raises ArrowInvalid / ParserError.
