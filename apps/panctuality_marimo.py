@@ -102,13 +102,6 @@ def _():
     warnings.filterwarnings("ignore")
 
     # Live data directory: local siri_zips archive
-    BASE_DIR = Path("data/siri_zips")
-    PROJECT_DIR = Path.cwd()
-    GTFS_DIR = PROJECT_DIR / "data/20260520_bus_sch"
-    OUT_DIR = PROJECT_DIR / "outputs_multiday"
-    RESULTS_DIR = PROJECT_DIR / "results"
-    RESULTS_DIR.mkdir(parents=True, exist_ok=True)
-    WEATHER_CSV = "data/cardiff_weather_april_to_september_2026.csv"
     # DfT Standards & Visual Theme
     DFT_BANDS = ["Early", "On time", "Late", "Very late"]
     DFT_COLORS = {
@@ -119,18 +112,7 @@ def _():
     }
     PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"]
     DOW_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-    return (
-        DOW_ORDER,
-        GTFS_DIR,
-        Path,
-        RESULTS_DIR,
-        WEATHER_CSV,
-        json,
-        np,
-        pd,
-        plt,
-        sys,
-    )
+    return DOW_ORDER, Path, io, json, np, pd, plt, sys
 
 
 @app.cell
@@ -175,7 +157,7 @@ def io_helpers(Path, json, mo, pd, sys):
             f.write(text_or_bytes)
         return True
 
-    return
+    return data_url, load_csv, load_json, save_local
 
 
 @app.cell(hide_code=True)
@@ -199,125 +181,6 @@ def _(mo):
     return
 
 
-@app.cell
-def _(Path, np, pd):
-    def load_and_index_gtfs(gtfs_dir: Path):
-        """
-        Loads Welsh GTFS Timetable Feeds and Pre-Indexes Spatial/Temporal Lookups:
-        ========================================================================
-        WHAT:
-          1. Reads agency.txt, routes.txt, trips.txt, stops.txt, stop_times.txt.
-          2. Derives scheduled origin departure minute (origin_min) from the first stop of every trip.
-          3. Builds representative directional (rep) and direction-free fallback (repfb) trip lookup tables.
-          4. Pre-compiles stop coordinates (lat, lon) and scheduled timetable minutes into contiguous
-             NumPy arrays grouped by trip_id.
-
-        WHY:
-          - Telematics pings carry route numbers and terminal departure times but lack GTFS trip_id.
-          - Pre-indexing allows instantaneous O(1) trip matching and vectorized C-speed Haversine distance
-            calculations across hundreds of thousands of bus pings without pandas iteration overhead.
-        """
-        # --- STEP 1: LOAD RAW GTFS SPECIFICATION TABLES ---
-        # WHAT: Load agency metadata containing operator codes and commercial trading names.
-        # WHY: AVL feeds broadcast operator codes (NOCs) like 'FCYM' or 'SSWL'. Linking agency_id to agency_noc
-        # is required to match live vehicles to scheduled operators.
-        agency = pd.read_csv(gtfs_dir / "agency.txt", dtype=str)
-
-        # WHAT: Load route definitions linking internal route_id to public line numbers (e.g., "132", "T4").
-        # WHY: String dtype is enforced so alphanumeric line designations (e.g., "X4", "1A", "T1C") are not altered.
-        routes = pd.read_csv(gtfs_dir / "routes.txt", dtype=str)
-
-        # WHAT: Load trip schedules linking route_id to individual trip_id and direction_id (0=outbound, 1=inbound).
-        # WHY: Each route has dozens of discrete daily trips. Preserving direction_id resolves outbound vs inbound runs.
-        trips = pd.read_csv(gtfs_dir / "trips.txt", dtype=str)
-
-        # WHAT: Load official bus stop coordinates (WGS84 latitude and longitude) across Wales.
-        # WHY: Floating-point precision (float64) is essential for computing accurate Haversine spatial distances
-        # to identify whether a bus is physically at a stop (within 200m).
-        stops = pd.read_csv(
-            gtfs_dir / "stops.txt",
-            dtype={"stop_id": "str", "stop_lat": "float64", "stop_lon": "float64"},
-        )
-
-        # WHAT: Load scheduled arrival and departure times at each sequential stop along every trip.
-        # WHY: String types are enforced for IDs to prevent numeric auto-casting from stripping leading zeroes
-        # from NaPTAN stop identifiers (e.g., '0610CH1312').
-        st = pd.read_csv(
-            gtfs_dir / "stop_times.txt",
-            usecols=["trip_id", "arrival_time", "departure_time", "stop_id", "stop_sequence"],
-            dtype={"trip_id": "str", "arrival_time": "str", "departure_time": "str", "stop_id": "str", "stop_sequence": "int32"},
-        )
-
-        # --- STEP 2: TIMETABLE MINUTE-OF-DAY CONVERSION HELPER ---
-        # WHAT: Convert 'HH:MM:SS' time strings into continuous minutes from midnight [0, 1440).
-        # WHY: GTFS supports times beyond 24:00:00 (e.g. 24:30:00) for overnight trips belonging to the
-        # previous service day. Using ((hours * 60 + minutes) % 1440) maps overnight trips continuously
-        # into the standard 24-hour clock cycle.
-        def _to_min(s):
-            p = s.str.split(":", expand=True).astype("Int64")
-            return ((p[0] * 60 + p[1]) % 1440).astype("float64")
-
-        # --- STEP 3: EXTRACT ORIGIN DEPARTURE MINUTE PER TRIP ---
-        # WHAT: Sort stop_times by (trip_id, stop_sequence) and extract the first scheduled stop (origin).
-        # WHY: Live SIRI-VM vehicle tracking feeds broadcast 'OriginAimedDepartureTime' (when the bus was
-        # scheduled to depart its first terminus). Finding this initial departure minute in GTFS creates
-        # the critical foreign key needed to match live buses to specific timetable trips.
-        fs = st.sort_values(["trip_id", "stop_sequence"]).groupby("trip_id", as_index=False).first()
-        fs["origin_min"] = _to_min(fs["departure_time"]).round().astype("float64")
-
-        # --- STEP 4: CONSTRUCT COMPOSITE TRIP MATCHING KEYS ---
-        # WHAT: Merge trips with route names, agency NOC, and origin departure minute.
-        # WHY: Creates a unified reference table (tk) indexed by (agency_noc, route_short_name, origin_min, direction_id).
-        tk = (
-            trips.merge(routes[["route_id", "route_short_name", "agency_id"]], on="route_id")
-            .merge(agency[["agency_id", "agency_noc", "agency_name"]], on="agency_id")
-            .merge(fs[["trip_id", "origin_min"]], on="trip_id")
-        )
-        tk["agency_noc"] = tk["agency_noc"].astype(str)
-        tk["route_short_name"] = tk["route_short_name"].astype(str)
-        tk["direction_id"] = tk["direction_id"].fillna("0").astype(str)
-
-        # --- STEP 5: BUILD PRIMARY DIRECTIONAL & FALLBACK TRIP LOOKUP TABLES ---
-        # WHAT:
-        #   - 'rep': Primary lookup matching on (operator, line, origin_min, direction_id).
-        #   - 'repfb': Secondary fallback lookup matching on (operator, line, origin_min).
-        # WHY: Live telematics often omit direction or broadcast unstandardized labels (e.g., 'inbound' vs '1').
-        # The fallback table guarantees high matching coverage even when direction metadata is absent.
-        rep = (
-            tk.dropna(subset=["origin_min"])
-            .drop_duplicates(["agency_noc", "route_short_name", "origin_min", "direction_id"])
-            [["agency_noc", "route_short_name", "origin_min", "direction_id", "trip_id", "agency_name"]]
-        )
-        repfb = (
-            tk.dropna(subset=["origin_min"])
-            .drop_duplicates(["agency_noc", "route_short_name", "origin_min"])
-            [["agency_noc", "route_short_name", "origin_min", "trip_id", "agency_name"]]
-            .rename(columns={"trip_id": "trip_id_fb", "agency_name": "agency_name_fb"})
-        )
-
-        # --- STEP 6: PRE-COMPILE STOP COORDINATES & SCHEDULED TIMES PER TRIP ---
-        # WHAT: Merge physical stop coordinates (lat, lon) into stop_times and pre-compile into contiguous
-        # NumPy float64 arrays stored in a Python dictionary: trip_arrays[trip_id] = (slat, slon, smin).
-        # WHY: Performing spatial joins or DataFrame slicing for millions of GPS pings in pandas is bottlenecked
-        # by Python interpreter overhead. Pre-compiling stop coordinates into contiguous C-order NumPy arrays
-        # enables instantaneous broadcasted Haversine calculations (slat[None, :], slon[None, :]) in C-speed.
-        stp = st.merge(stops[["stop_id", "stop_lat", "stop_lon"]], on="stop_id", how="left")
-        stp["sched_min"] = _to_min(stp["arrival_time"].fillna(stp["departure_time"]))
-        stp = stp.dropna(subset=["stop_lat", "stop_lon", "sched_min"])
-
-        trip_arrays = {} # to save trip_id -> (stop_lat, stop_lon, sched_min) arrays
-        for tid, g in stp.groupby("trip_id"):
-            trip_arrays[tid] = (
-                g["stop_lat"].to_numpy(dtype=np.float64),
-                g["stop_lon"].to_numpy(dtype=np.float64),
-                g["sched_min"].to_numpy(dtype=np.float64),
-            )
-
-        return rep, repfb, trip_arrays
-
-    return (load_and_index_gtfs,)
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -332,41 +195,6 @@ def _(mo):
     - **Hourly Timestamp Key:** Standardizing weather to `timestamp_hour` allows a seamless 1:1 join onto the bus delay panel, enabling direct empirical modeling of how punctuality degrades under adverse weather conditions.
     """)
     return
-
-
-@app.cell
-def _(Path, pd):
-    def load_cardiff_weather(weather_csv: Path) -> pd.DataFrame:
-        """
-        Loads Cardiff Hourly Weather CSV and Indexes by Hourly Timestamp:
-        ================================================================
-        WHAT:
-          1. Reads hourly weather observations from Cardiff meteorological station.
-          2. Parses timestamps into timezone-naive datetime floored to the operating hour.
-          3. Extracts key weather parameters: temperature (°C), rainfall (mm), humidity, wind, condition.
-          4. Drops duplicate hourly rows to ensure a strict 1:1 join key.
-
-        WHY:
-          - Bus punctuality in rural Wales is heavily influenced by adverse weather (rain, high winds, mist).
-          - Flooring timestamps to the hour allows a clean 1-to-1 merge onto the hourly bus delay panel.
-        """
-        # Guard check: if weather file does not exist, return an empty schema-compliant DataFrame
-        if not (weather_csv and Path(weather_csv).exists()):
-            return pd.DataFrame(columns=["timestamp_hour", "temperature_c", "precipitation_mm", "condition"])
-
-        # Read raw weather observations from Cardiff station
-        w_df = pd.read_csv(weather_csv)
-
-        # WHAT: Parse timestamps into pandas datetime floored to the operating hour.
-        # WHY: Ensures timestamp format matches timestamp_hour in the bus delay table for a clean 1:1 merge.
-        w_df["timestamp_hour"] = pd.to_datetime(w_df["timestamp"], format="%d/%m/%Y %H:%M:%S", errors="coerce")
-
-        # WHAT: Select key meteorological columns and enforce uniqueness on timestamp_hour.
-        # WHY: Drops duplicate sensor readings so the subsequent left join on the bus panel never duplicates rows.
-        cols = [c for c in ["timestamp_hour", "temperature_c", "precipitation_mm", "relative_humidity_pct", "wind_speed_kmh", "condition"] if c in w_df.columns]
-        return w_df[cols].drop_duplicates("timestamp_hour")
-
-    return (load_cardiff_weather,)
 
 
 @app.cell(hide_code=True)
@@ -400,350 +228,6 @@ def _(mo):
     return
 
 
-@app.cell
-def _(
-    GTFS_DIR,
-    Path,
-    RESULTS_DIR,
-    WEATHER_CSV,
-    load_and_index_gtfs,
-    load_cardiff_weather,
-    np,
-    pd,
-):
-    def load_or_process_hourly_data(
-        sample_frac: float = 0.20,
-        at_stop_radius: float = 200.0,
-        gtfs_dir: Path = GTFS_DIR,
-        weather_csv: Path = WEATHER_CSV,
-        cache_file: Path = RESULTS_DIR / "hourly_bus_delay_panel.parquet",
-        data_dir: Path = Path("data/siri_zips"),
-        sample_n_csv: int = None,
-        max_days: int = None,
-        verbose: bool = True,
-    ) -> pd.DataFrame:
-        """
-        Unified Ingestion & Stop-Level Delay Processing Pipeline:
-        ========================================================
-        WHAT:
-          - Automatically discovers daily SIRI-VM archives in `data/siri_zips` (e.g. 20260401.zip).
-          - Directly streams each CSV snapshot from the ZIP archive into RAM without unzipping to disk.
-          - Outer loop: iterates over daily archives (chronologically sorted).
-          - Inner loop: iterates over CSV snapshots:
-            * Samples 20% of pings: csv_df.sample(frac=sample_frac, random_state=42)
-            * Standardizes columns (snake_case, CamelCase, SIRI raw tags)
-            * Normalizes operator NOCs and aliases (e.g. A2BV -> A2BC, ANWE -> ANSL)
-            * Validates spatial coordinates within the Wales bounding box
-            * Converts UTC timestamps to local British Summer Time (BST = UTC+1)
-            * Matches pings to GTFS scheduled trips (directional with fallback)
-            * Computes vectorized Haversine distance from bus GPS to all trip stops
-            * Identifies nearest scheduled stop and computes true delay: (rec_min - smin[j] + 720) % 1440 - 720
-            * Filters strictly to at-stop pings (distance <= 200m)
-            * Computes route geometry features (total_dist_km, max_reach_km, circuity_ratio, etc.)
-            * Appends verified at-stop pings to day_at_stop_pings
-          - Groups day_at_stop_pings by (timestamp_hour, day, hour, dow, period, operator, operator_name, line)
-          - Assigns DfT statutory punctuality bands (Early, On Time, Late, Very Late)
-          - Merges Cardiff hourly weather observations on timestamp_hour
-          - Collects daily summaries into master list and materializes to Parquet cache
-
-        WHY:
-          - Streaming directly from compressed ZIP archives eliminates tens of gigabytes of disk usage.
-          - Removing raw latitude/longitude from hourly aggregation produces authentic route-hour statistics.
-          - Measuring delay against the nearest scheduled stop prevents the artificial 30-45 min delay bias.
-        """
-        import zipfile
-        import random
-        random.seed(42)
-
-        # --- STEP 2: LOAD AND PRE-INDEX REFERENCE DATASETS (GTFS & WEATHER) ---
-        if verbose:
-            print("Loading and indexing GTFS timetable...")
-        rep, repfb, trip_arrays = load_and_index_gtfs(gtfs_dir)
-        weather_df = load_cardiff_weather(weather_csv)
-
-        # Operational time period classification helper (standard UK transport planning periods)
-        def period_fn(h):
-            if 7 <= h <= 9: return "AM peak"
-            if 10 <= h <= 15: return "Interpeak"
-            if 16 <= h <= 18: return "PM peak"
-            if 19 <= h <= 21: return "Evening"
-            return "Night"
-
-        # Great-circle Haversine spherical distance formula in meters (Earth radius R = 6,371,000 m)
-        R = 6371000.0
-        CARDIFF_LAT = 51.4780 # Cardiff city center latitude
-        CARDIFF_LON = -3.1780 # Cardiff city center longitude
-        def hav(la1, lo1, la2, lo2):
-            p1 = np.radians(la1); p2 = np.radians(la2)
-            dp = np.radians(la2 - la1); dl = np.radians(lo2 - lo1)
-            a = np.sin(dp / 2) ** 2 + np.cos(p1) * np.cos(p2) * np.sin(dl / 2) ** 2
-            return 2 * R * np.arcsin(np.sqrt(np.clip(a, 0, 1)))
-
-        # Operator alias mapping: maps live feed operator codes to GTFS National Operator Codes (NOCs)
-        op_alias = {"A2BV": "A2BC", "ANWE": "ANSL"}
-
-        # Column mapping across CamelCase (SIRI raw) and snake_case formats
-        col_map = {
-            "line_ref": "line", "LineRef": "line", "MonitoredVehicleJourney_LineRef": "line",
-            "vehicle_ref": "vehicle", "VehicleRef": "vehicle", "MonitoredVehicleJourney_VehicleRef": "vehicle",
-            "operator_ref": "operator", "OperatorRef": "operator", "MonitoredVehicleJourney_OperatorRef": "operator",
-            "recorded_at": "recorded_at", "RecordedAtTime": "recorded_at", "recorded_at_dt": "recorded_at",
-            "origin_aimed_departure": "aimed_dep", "OriginAimedDeparture": "aimed_dep",
-            "origin_aimed_departure_time": "aimed_dep", "OriginAimedDepartureTime": "aimed_dep",
-            "MonitoredVehicleJourney_OriginAimedDepartureTime": "aimed_dep",
-            "latitude": "latitude", "Latitude": "latitude", "MonitoredVehicleJourney_VehicleLocation_Latitude": "latitude",
-            "longitude": "longitude", "Longitude": "longitude", "MonitoredVehicleJourney_VehicleLocation_Longitude": "longitude",
-            "direction_ref": "direction_ref", "DirectionRef": "direction_ref", "MonitoredVehicleJourney_DirectionRef": "direction_ref",
-        }
-
-        # --- STEP 3: DISCOVER DAILY ZIP ARCHIVES ---
-        data_dir = Path(data_dir or "data/siri_zips")
-        day_sources = sorted([f for f in data_dir.glob("*.zip") if f.name.replace(".zip", "").isdigit()])
-        print(f"Discovered {len(day_sources)} daily ZIP archives in {data_dir}")
-
-        if day_sources:
-            print(f"First day: {day_sources[0].stem}, Last day: {day_sources[-1].stem}")
-        if max_days is not None:
-            day_sources = day_sources[:max_days]
-
-        all_days_hourly_list = []
-
-        # Helper generator to stream sampled DataFrames directly from ZIP archive
-        def iter_day_csvs(src):
-            with zipfile.ZipFile(src, "r") as z:
-                csv_names = sorted([n for n in z.namelist() if n.endswith(".csv") and not n.startswith("__MACOSX")])
-                if sample_n_csv is not None:
-                    csv_names = random.sample(csv_names, min(len(csv_names), sample_n_csv))
-                print(f"Archive: {src.name}, CSV files discovered: {len(csv_names)}")
-                for idx, name in enumerate(csv_names):
-                    if idx % 800 == 0 and verbose:
-                        print(f"Archive: {src.name}, {idx + 1}/{len(csv_names)}: Processing CSV: {name}")
-                    try:
-                        with z.open(name) as f:
-                            yield pd.read_csv(f).sample(frac=sample_frac, random_state=42)
-                    except Exception:
-                        continue
-
-        # --- STEP 4: PROCESSING LOOP ACROSS DAILY ARCHIVES ---
-        for _src in day_sources:
-            day_label = _src.stem
-            day_at_stop_pings = []
-
-            for csv_df in iter_day_csvs(_src): # stream sampled CSVs directly from ZIP to RAM without unzipping to disk. This is done to avoid excessive disk usage and I/O overhead.
-                try:
-                    csv_df = csv_df.drop_duplicates()
-                    if csv_df.empty:
-                        continue
-
-                    # --- STEP 4a: STANDARDIZE COLUMN NAMES ---
-                    for old, new in col_map.items():
-                        if old in csv_df.columns and new not in csv_df.columns:
-                            csv_df[new] = csv_df[old]
-
-                    # --- STEP 4b: EXTRACT & NORMALIZE OPERATOR NOC ---
-                    if "operator" not in csv_df.columns and "vehicle" in csv_df.columns:
-                        csv_df["operator"] = csv_df["vehicle"].astype(str).str.split("-").str[0]
-                    elif "operator" not in csv_df.columns:
-                        csv_df["operator"] = "UNKNOWN"
-
-                    csv_df["operator"] = csv_df["operator"].astype(str).map(op_alias).fillna(csv_df["operator"].astype(str))
-                    csv_df["line"] = csv_df["line"].astype(str)
-
-                    # --- STEP 4c: SPATIAL VALIDATION (WELSH BOUNDING BOX) ---
-                    csv_df["latitude"] = pd.to_numeric(csv_df["latitude"], errors="coerce")
-                    csv_df["longitude"] = pd.to_numeric(csv_df["longitude"], errors="coerce")
-                    csv_df = csv_df.dropna(subset=["latitude", "longitude"])
-                    csv_df = csv_df[csv_df["latitude"].between(49.8, 60.9) & csv_df["longitude"].between(-8.7, 1.8)]
-
-                    if "recorded_at" not in csv_df.columns or "aimed_dep" not in csv_df.columns or csv_df.empty:
-                        continue
-
-                    # --- STEP 4d: TIMEZONE CONVERSION (UTC -> BRITISH SUMMER TIME) ---
-                    t_obs = pd.to_datetime(csv_df["recorded_at"], utc=True, errors="coerce").dt.tz_convert("Europe/London")
-                    t_aim = pd.to_datetime(csv_df["aimed_dep"], utc=True, errors="coerce").dt.tz_convert("Europe/London")
-
-                    csv_df["dt"] = t_obs
-                    csv_df["aim_dt"] = t_aim
-                    csv_df = csv_df.dropna(subset=["dt", "aim_dt"])
-                    if csv_df.empty:
-                        continue
-
-                    # --- STEP 4e: COMPUTE DEPARTURE & OBSERVATION MINUTES OF DAY ---
-                    csv_df["origin_min"] = (csv_df["aim_dt"].dt.hour * 60 + csv_df["aim_dt"].dt.minute).round().astype("float64")
-                    csv_df["rec_min"] = (csv_df["dt"].dt.hour * 60 + csv_df["dt"].dt.minute + csv_df["dt"].dt.second / 60.0).astype("float64")
-
-                    # --- STEP 4f: MATCH LIVE VEHICLE JOURNEYS TO SCHEDULED GTFS TRIPS ---
-                    if "direction_ref" in csv_df.columns:
-                        dir_map = {"inbound": "1", "outbound": "0", "1": "1", "0": "0"}
-                        csv_df["dir_id"] = csv_df["direction_ref"].astype(str).str.lower().map(dir_map).fillna("0")
-                        m = csv_df.merge(
-                            rep,
-                            left_on=["operator", "line", "origin_min", "dir_id"],
-                            right_on=["agency_noc", "route_short_name", "origin_min", "direction_id"],
-                            how="left",
-                        )
-                        m = m.merge(
-                            repfb,
-                            left_on=["operator", "line", "origin_min"],
-                            right_on=["agency_noc", "route_short_name", "origin_min"],
-                            how="left",
-                        )
-                        m["trip_id"] = m["trip_id"].fillna(m["trip_id_fb"])
-                        m["agency_name"] = m["agency_name"].fillna(m["agency_name_fb"]).fillna(m["operator"])
-                    else:
-                        m = csv_df.merge(
-                            repfb,
-                            left_on=["operator", "line", "origin_min"],
-                            right_on=["agency_noc", "route_short_name", "origin_min"],
-                            how="left",
-                        )
-                        m["trip_id"] = m["trip_id_fb"]
-                        m["agency_name"] = m["agency_name_fb"].fillna(m["operator"])
-
-                    m = m.dropna(subset=["trip_id"])
-                    if m.empty:
-                        continue
-
-                    # --- STEP 4g: VECTORIZED NEAREST-SCHEDULED-STOP & DELAY CALCULATION ---
-                    for tid, g in m.groupby("trip_id"):
-                        if tid not in trip_arrays:
-                            continue
-                        slat, slon, smin = trip_arrays[tid]
-                        plat = g["latitude"].to_numpy()
-                        plon = g["longitude"].to_numpy()
-                        n_planned_stops = len(slat)
-
-                        # Great-circle Haversine distance matrix between pings and trip stops
-                        D = hav(plat[:, None], plon[:, None], slat[None, :], slon[None, :])
-                        j = D.argmin(axis=1)
-                        dist = D[np.arange(len(g)), j]
-
-                        # Schedule delay unwrapped continuously around midnight
-                        delays = (g["rec_min"].to_numpy() - smin[j] + 720) % 1440 - 720
-
-                        # --- STEP 4h: FILTER TO VERIFIED AT-STOP OBSERVATIONS (DIST <= 200M) ---
-                        valid = dist <= at_stop_radius
-                        if np.any(valid):
-                            sub = g.iloc[valid].copy()
-                            total_dist = hav(slat[:-1], slon[:-1], slat[1:], slon[1:]).sum() / 1000.0
-                            max_reach  = hav(slat[0], slon[0], slat, slon).max() / 1000.0
-                            j_valid = j[valid]
-                            sched_dur = (smin[-1] - smin[0] + 1440) % 1440
-
-                            sub["delay_min"] = delays[valid]
-                            sub["dist_m"] = dist[valid]
-                            sub["planned_stops"] = n_planned_stops
-                            sub["stop_index"] = j_valid
-                            sub["route_progress_pct"] = (j_valid / max(1, n_planned_stops - 1)) * 100.0
-                            sub["total_dist_km"] = total_dist
-                            sub["max_reach_km"] = max_reach
-                            sub["avg_stop_spacing_km"] = total_dist / max(1, n_planned_stops - 1)
-                            sub["circuity_ratio"] = total_dist / max(0.1, max_reach)
-                            sub["sched_duration_min"] = sched_dur
-                            sub["sched_speed_kmh"] = (total_dist / max(0.1, sched_dur / 60.0)) if sched_dur > 0 else np.nan
-                            sub["origin_dist_cardiff_km"] = hav(slat[0], slon[0], CARDIFF_LAT, CARDIFF_LON) / 1000.0
-                            sub["dest_dist_cardiff_km"]   = hav(slat[-1], slon[-1], CARDIFF_LAT, CARDIFF_LON) / 1000.0
-                            day_at_stop_pings.append(sub)
-                except Exception:
-                    print(f"Error processing CSV in {day_label}, skipping this file.")
-                    continue
-
-            if not day_at_stop_pings:
-                print(f"Skipping {day_label}: 0 matched at-stop pings.")
-                continue
-
-            # --- STEP 4i: CONSOLIDATE VERIFIED AT-STOP PINGS & ASSIGN STATUTORY BANDS ---
-            pings_df = pd.concat(day_at_stop_pings, ignore_index=True)
-            pings_df["timestamp_hour"] = pings_df["dt"].dt.floor("h").dt.tz_localize(None)
-            pings_df["day"] = pings_df["dt"].dt.strftime("%Y-%m-%d")
-            pings_df["hour"] = pings_df["dt"].dt.hour
-            pings_df["dow"] = pings_df["dt"].dt.day_name()
-            pings_df["period"] = pings_df["hour"].map(period_fn)
-
-            # Senior Traffic Commissioner & DfT Statutory Punctuality Brackets (Vectorized 0-100 floats for C-mean)
-            pings_df["is_ontime"] = ((pings_df["delay_min"] >= -1.0) & (pings_df["delay_min"] <= 5.99)).astype(float) * 100.0
-            pings_df["is_early"] = (pings_df["delay_min"] < -1.0).astype(float) * 100.0
-            pings_df["is_late"] = ((pings_df["delay_min"] > 5.99) & (pings_df["delay_min"] <= 15.0)).astype(float) * 100.0
-            pings_df["is_very_late"] = (pings_df["delay_min"] > 15.0).astype(float) * 100.0
-            pings_df["operator_name"] = pings_df["agency_name"].fillna(pings_df["operator"])
-
-            # --- STEP 4j: AGGREGATE TO HOURLY ROUTE GRANULARITY (WITHOUT LAT/LON) ---
-            hourly_day = (
-                pings_df.groupby(
-                    ["timestamp_hour", "day", "hour", "dow", "period", "operator", "operator_name", "line"],
-                    observed=True,
-                )
-                .agg(
-                    n_obs=("delay_min", "count"),
-                    median_delay=("delay_min", "median"),
-                    mean_delay=("delay_min", "mean"),
-                    p25_delay=("delay_min", lambda s: s.quantile(0.25)),
-                    p75_delay=("delay_min", lambda s: s.quantile(0.75)),
-                    on_time_pct=("is_ontime", "mean"),
-                    early_pct=("is_early", "mean"),
-                    late_pct=("is_late", "mean"),
-                    very_late_pct=("is_very_late", "mean"),
-                    planned_stops=("planned_stops", "median"),
-                    stop_index=("stop_index", "median"),
-                    route_progress_pct=("route_progress_pct", "median"),
-                    max_planned_stops=("planned_stops", "max"),
-                    total_dist_km=("total_dist_km", "max"),
-                    max_reach_km=("max_reach_km", "max"),
-                    avg_stop_spacing_km=("avg_stop_spacing_km", "median"),
-                    circuity_ratio=("circuity_ratio", "median"),
-                    sched_duration_min=("sched_duration_min", "median"),
-                    sched_speed_kmh=("sched_speed_kmh", "median"),
-                    origin_dist_cardiff_km=("origin_dist_cardiff_km", "min"),
-                    dest_dist_cardiff_km=("dest_dist_cardiff_km", "max")
-                )
-                .reset_index()
-            )
-            hourly_day["iqr_delay"] = hourly_day["p75_delay"] - hourly_day["p25_delay"]
-
-            # --- STEP 4k: MERGE AMBIENT CARDIFF WEATHER ATTRIBUTES ---
-            if not weather_df.empty:
-                hourly_day = hourly_day.merge(weather_df, on="timestamp_hour", how="left")
-
-            all_days_hourly_list.append(hourly_day)
-            print(f"Successfully processed {day_label}: {len(hourly_day)} hourly route records.")
-
-        # --- STEP 5: CONCATENATE ALL DAILY HOURLY TABLES INTO MASTER HOURLY PANEL ---
-        if not all_days_hourly_list:
-            print("No hourly records could be generated from available archives.")
-            return pd.DataFrame()
-
-        hourly_df = pd.concat(all_days_hourly_list, ignore_index=True)
-        ## drop duplicates in case of overlapping archives or repeated CSVs
-        hourly_df = hourly_df.drop_duplicates()
-        hourly_df["month"] = pd.to_datetime(hourly_df["day"]).dt.strftime("%Y-%m")
-        hourly_df["daytype"] = hourly_df["dow"].apply(lambda d: "Weekend" if d in ["Saturday", "Sunday"] else "Weekday")
-
-        # --- STEP 6: MATERIALIZE MASTER PANEL TO PARQUET CACHE ---
-        cache_file.parent.mkdir(parents=True, exist_ok=True)
-        hourly_df.to_parquet(cache_file, index=False)
-        print(f"Saved {len(hourly_df)} hourly records across {hourly_df['day'].nunique()} unique days to {cache_file}.")
-        return hourly_df
-
-    return
-
-
-@app.cell
-def _():
-    # ## example usag
-    # hourly_example = load_or_process_hourly_data(
-    #         sample_frac=0.20,
-    #         max_days=1,
-    #         sample_n_csv=5,
-    #     )
-    return
-
-
-@app.cell
-def _():
-    # hourly_example[["median_delay", "avg_stop_spacing_km", "circuity_ratio", "avg_stop_spacing_km", "max_planned_stops", "origin_dist_cardiff_km", "dest_dist_cardiff_km"]].corr()
-    return
-
-
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -753,14 +237,19 @@ def _(mo):
 
 
 @app.cell
-def _(mo, pd):
+async def _(io, mo, pd, sys):
     ## read from parquet file
     # Load the panel from the data folder next to the notebook. This works both
     # locally and as a WASM app on GitHub Pages (mo.notebook_location resolves
     # to the notebook's directory / public URL).
-    hourly_df = pd.read_parquet(
-        mo.notebook_location() / "lpip_data" / "hourly_bus_delay_panel.parquet"
-    )
+    _parquet_url = mo.notebook_location() / "lpip_data" / "hourly_bus_delay_panel.parquet"
+    if sys.platform == "emscripten":
+        from pyodide.http import pyfetch
+
+        _resp = await pyfetch(str(_parquet_url))
+        hourly_df = pd.read_parquet(io.BytesIO(await _resp.bytes()))
+    else:
+        hourly_df = pd.read_parquet(str(_parquet_url))
     return (hourly_df,)
 
 
@@ -1569,9 +1058,8 @@ def _(mo):
 
 
 @app.cell
-def _(np, pd):
+def _(data_url, load_json, np, pd, save_local):
     from typing import Any, Dict, Tuple
-    from pathlib import Path as _Path
     import json as _json
     import optuna
     from sklearn.model_selection import KFold
@@ -1654,7 +1142,6 @@ def _(np, pd):
         exclude_cols: list[str],
         model: str | type = "xgboost",
         cache_name: str | None = None,
-        save_dir: str | _Path = "param_results",
         force_retune: bool = False,
         n_trials: int = 100,
         random_state: int = 42,
@@ -1666,25 +1153,29 @@ def _(np, pd):
 
         Pass `model="xgboost"` (or `"xgb"` / `XGBRegressor`) or `model="lightgbm"`
         (or `"lgb"` / `"lgbm"` / `LGBMRegressor`). If `cache_name` is provided and
-        `<save_dir>/<cache_name>.json` exists (with `force_retune=False`), loads
-        cached parameters directly from disk without re-running Optuna.
+        `lpip_results/<cache_name>.json` exists next to the notebook (with
+        `force_retune=False`), loads cached parameters without re-running Optuna.
+        The cache is a plain file locally and the notebook's public URL when the
+        notebook runs as a WASM app (e.g. GitHub Pages).
         """
         model_key = _normalize_model_key(model)
         spec = _MODEL_SPECS[model_key]
         estimator_cls = spec["estimator"]
 
-        save_path = _Path(save_dir)
-        save_path.mkdir(parents=True, exist_ok=True)
-        cache_file = (save_path / f"{cache_name}.json") if cache_name else None
+        # Cache location: the results folder that ships next to the notebook
+        # (data_url = mo.notebook_location() / "lpip_results", see the io_helpers cell).
+        cache_file = (data_url / f"{cache_name}.json") if cache_name else None
 
-        if cache_file and cache_file.exists() and not force_retune:
-            with open(cache_file, "r") as f:
-                saved = _json.load(f)
-            print(
-                f" Loaded cached {model_key} parameters for '{cache_name}' "
-                f"from {cache_file} (Best score: {saved['best_score']:.4f})"
-            )
-            return saved["best_params"], saved["best_score"]
+        if cache_file and not force_retune:
+            try:
+                saved = load_json(f"{cache_name}.json")
+                print(
+                    f" Loaded cached {model_key} parameters for '{cache_name}' "
+                    f"from {cache_file} (Best score: {saved['best_score']:.4f})"
+                )
+                return saved["best_params"], saved["best_score"]
+            except Exception:
+                pass  # no cache available where this runs; tune below
 
         optuna.logging.set_verbosity(optuna.logging.WARNING)
 
@@ -1732,9 +1223,13 @@ def _(np, pd):
         best_full_params = {**fixed_params, **study.best_params}
 
         if cache_file:
-            with open(cache_file, "w") as f:
-                _json.dump({"best_params": best_full_params, "best_score": study.best_value}, f, indent=2)
-            print(f" Saved tuned {model_key} parameters to {cache_file}")
+            _payload = _json.dumps(
+                {"best_params": best_full_params, "best_score": study.best_value}, indent=2
+            )
+            if save_local(f"{cache_name}.json", _payload):
+                print(f" Saved tuned {model_key} parameters to {cache_file}")
+            else:
+                print(" Skipped saving tuned parameters (read-only location)")
 
         return best_full_params, study.best_value
 
@@ -2064,17 +1559,19 @@ def _(
     best_xgb_mc,
     best_xgb_md,
     best_xgb_ms,
+    data_url,
     full_model_performance_df,
+    load_csv,
     ml_test_df,
     ml_train_df,
     mo,
     outcome_var,
     pd,
+    save_local,
     treatment_var1,
     treatment_var2,
     treatment_var3,
 ):
-    from pathlib import Path as _Path
     from sklearn.base import clone as _clone
     from sklearn.metrics import root_mean_squared_error as _rmse, r2_score as _r2
 
@@ -2128,17 +1625,21 @@ def _(
         tasks: list[dict],
         train_df: pd.DataFrame,
         test_df: pd.DataFrame,
-        cache_path: str = "results/accuracy_comparison_xgb_vs_lgb_v2.csv",
+        cache_name: str = "accuracy_comparison_xgb_vs_lgb_v2.csv",
         rerun: bool = False,
     ) -> pd.DataFrame:
         """
         Evaluates XGBoost and LightGBM nuisance models on the test set using RMSE and R-squared.
-        Loads cached results from disk if available to avoid re-fitting.
+        Loads cached results from the notebook's results folder (local file or WASM
+        URL on GitHub Pages) to avoid re-fitting; recomputes when unavailable.
         """
-        cache_file = _Path(cache_path)
-        if cache_file.exists() and not rerun:
-            print(f" Loaded accuracy comparison from {cache_file}")
-            return pd.read_csv(cache_file)
+        if not rerun:
+            try:
+                _cached = load_csv(cache_name)
+                print(f" Loaded accuracy comparison from {data_url / cache_name}")
+                return _cached
+            except Exception:
+                pass
 
         results = []
         for task in tasks:
@@ -2182,9 +1683,10 @@ def _(
             })
 
         df_out = pd.DataFrame(results)
-        cache_file.parent.mkdir(parents=True, exist_ok=True)
-        df_out.to_csv(cache_file, index=False)
-        print(f" Saved accuracy comparison to {cache_file}")
+        if save_local(cache_name, df_out.to_csv(index=False)):
+            print(f" Saved accuracy comparison to {data_url / cache_name}")
+        else:
+            print(" Skipped saving accuracy comparison (read-only location)")
         return df_out
 
     accuracy_comparison_df = evaluate_models_on_test(
@@ -2244,7 +1746,6 @@ def _(
 
 @app.cell
 def _(
-    Path,
     best_lgb_lc,
     best_lgb_ld,
     best_lgb_ls,
@@ -2257,9 +1758,11 @@ def _(
     best_xgb_mc,
     best_xgb_md,
     best_xgb_ms,
+    data_url,
+    load_csv,
     ml_train_df,
     outcome_var,
-    pd,
+    save_local,
     treatment_var1,
     treatment_var2,
     treatment_var3,
@@ -2299,19 +1802,27 @@ def _(
         return dml_plr.summary
 
 
-    def dml_result(name, out_var, treatment_var, ml_l, ml_m, rerun=False, save_dir="results"):
-        """Load a saved DML summary from disk, or rerun and save it.
+    def dml_result(name, out_var, treatment_var, ml_l, ml_m, rerun=False):
+        """Load a saved DML summary from the notebook's results folder, or rerun and save it.
 
-        Unlike mo.persistent_cache, this only depends on the file on disk:
+        Reads `lpip_results/` next to the notebook: a plain file locally, and the
+        notebook's public URL when running as a WASM app (e.g. GitHub Pages).
+        Unlike mo.persistent_cache, this only depends on the cached file:
         small upstream changes do not trigger a rerun. Set rerun=True to refit.
         """
-        cache_file = Path(save_dir) / f"{name}.csv"
-        if cache_file.exists() and not rerun:
-            print(f" Loaded DML result '{name}' from {cache_file}")
-            return pd.read_csv(cache_file, index_col=0)
+        _file = f"{name}.csv"
+        if not rerun:
+            try:
+                _cached = load_csv(_file, index_col=0)
+                print(f" Loaded DML result '{name}' from {data_url / _file}")
+                return _cached
+            except Exception:
+                pass
         summary = perform_dml(out_var, treatment_var, ml_l, ml_m)
-        summary.to_csv(cache_file)
-        print(f" Saved DML result '{name}' to {cache_file}")
+        if save_local(_file, summary.to_csv()):
+            print(f" Saved DML result '{name}' to {data_url / _file}")
+        else:
+            print(f" Skipped saving DML result '{name}' (read-only location)")
         return summary
 
 
