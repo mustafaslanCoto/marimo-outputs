@@ -967,25 +967,46 @@ def _(mo):
 
 
 @app.cell
-def _(model_dummy):
-    y = model_dummy["mean_delay"]
-    X = model_dummy.drop(columns=["mean_delay"])
-    from statsmodels.api import OLS, add_constant
-    X = add_constant(X)
-    # Cell: Estimate OLS Model
-    # Fit OLS with robust standard errors (HC1 / White-Huber)
-    ols_model = OLS(y, X)
-    ols_results = ols_model.fit()
+def _(json, load_json, model_dummy, save_local):
+    # Estimating this OLS by pinv/SVD on ~165k x 200 takes minutes in the browser
+    # (no BLAS in WASM), which trips marimo's RPC timeout before the page can paint.
+    # Cache the fitted summary in lpip_results/ols_summary.json and reuse it.
+    from types import SimpleNamespace
 
-    # # Display statutory regression metrics in marimo
-    # mo.md(rf"""
-    # ### OLS Regression Model Results
-    # - **Dependent Variable ($$y$$):** `mean_delay` (Minutes)
-    # - **Observations ($$N$$):** {int(ols_results.nobs):,}
-    # - **R-squared ($$R^2$$):** {ols_results.rsquared:.4f}
-    # - **Adjusted $$R^2$$:** {ols_results.rsquared_adj:.4f}
-    # - **F-statistic:** {ols_results.fvalue:.2f} ($$p < 0.001$$)
-    # """)
+    try:
+        _cached_ols = load_json("ols_summary.json")
+    except Exception:
+        _cached_ols = None
+
+    if _cached_ols is not None:
+        ols_results = SimpleNamespace(
+            nobs=_cached_ols["nobs"],
+            rsquared=_cached_ols["rsquared"],
+            rsquared_adj=_cached_ols["rsquared_adj"],
+            fvalue=_cached_ols["fvalue"],
+            summary_html=_cached_ols["html"],
+        )
+        print(" Loaded OLS summary from lpip_results/ols_summary.json")
+    else:
+        y = model_dummy["mean_delay"]
+        X = model_dummy.drop(columns=["mean_delay"])
+        from statsmodels.api import OLS, add_constant
+        X = add_constant(X)
+        # Fit OLS with robust standard errors (HC1 / White-Huber)
+        ols_model = OLS(y, X)
+        ols_results = ols_model.fit()
+
+        _payload = json.dumps(
+            {
+                "nobs": float(ols_results.nobs),
+                "rsquared": float(ols_results.rsquared),
+                "rsquared_adj": float(ols_results.rsquared_adj),
+                "fvalue": float(ols_results.fvalue),
+                "html": ols_results.summary().as_html(),
+            }
+        )
+        if save_local("ols_summary.json", _payload):
+            print(" Saved OLS summary to lpip_results/ols_summary.json")
     return (ols_results,)
 
 
@@ -1002,7 +1023,7 @@ def _(mo, ols_results):
 
     mo.vstack([
         # _summary_card,
-        mo.Html(ols_results.summary().as_html()),
+        mo.Html(getattr(ols_results, "summary_html", None) or ols_results.summary().as_html()),
     ])
     return
 
