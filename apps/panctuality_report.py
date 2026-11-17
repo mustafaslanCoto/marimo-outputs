@@ -111,7 +111,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 3. Data: sources and preparation
@@ -1671,7 +1671,7 @@ def _(mo):
 @app.cell
 def _(mo):
     mo.md(r"""
-    Each row is one learner and one treatment. `coef` is the estimated causal effect in minutes per unit of the treatment, `std err` and `t` describe its precision, `P>|t|` is the two-sided p-value, and the last two columns give the 95% confidence interval.
+    Each row is one learner and one treatment. `coef` is the estimated causal effect in minutes per unit of the treatment, `std err` and `t` describe its precision, `p-value` is the two-sided test, and `CI lower` and `CI upper` give the 95% confidence interval.
     """)
     return
 
@@ -1687,17 +1687,23 @@ def _(
     pd,
 ):
     ## concat results: XGBoost + LightGBM, one row per learner x treatment
-    dml_summary = pd.concat(
-        {
-            "xgb_circuity": dml_xgb_circuity,
-            "xgb_stop": dml_xgb_stop,
-            "xgb_dist": dml_xgb_dist,
-            "lgb_circuity": dml_lgb_circuity,
-            "lgb_stop": dml_lgb_stop,
-            "lgb_dist": dml_lgb_dist,
-        },
-        axis=0,
-    ).round(3)
+    dml_summary = (
+        pd.concat(
+            {
+                "xgb_circuity": dml_xgb_circuity,
+                "xgb_stop": dml_xgb_stop,
+                "xgb_dist": dml_xgb_dist,
+                "lgb_circuity": dml_lgb_circuity,
+                "lgb_stop": dml_lgb_stop,
+                "lgb_dist": dml_lgb_dist,
+            },
+            axis=0,
+        )
+        .rename_axis(["Learner", "Treatment"])
+        .reset_index()
+        .rename(columns={"P>|t|": "p-value", "2.5 %": "CI lower", "97.5 %": "CI upper"})
+        .round(3)
+    )
     dml_summary
     return
 
