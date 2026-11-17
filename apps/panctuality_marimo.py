@@ -1452,82 +1452,101 @@ def _(
 def _(
     LGBMRegressor,
     XGBRegressor,
+    load_csv,
     ml_test_df,
     ml_train_df,
     outcome_var,
     pd,
+    save_local,
     tune_nuisance,
 ):
-    # --- PREDICTIVE TUNING: ALL VARIABLES -> mean_delay (XGBoost vs LIGHTGBM) ---
+    # --- PREDICTIVE BENCHMARK: ALL VARIABLES -> mean_delay (XGBoost vs LIGHTGBM) ---
     # WHAT: Tune one XGBoost and one LightGBM regressor predicting `mean_delay` from the
     #       FULL feature set (route geometry, scheduled speed, weather, and all
     #       hour/dow/operator/line/condition dummies). Nothing is excluded, unlike the
     #       DML nuisance models which each drop one treatment variable.
     # WHY: Benchmarks the predictive ceiling of the panel: how well can hourly delay be
     #      predicted when every variable is available as a feature?
+    #
+    # CACHED RESULT: fitting these two 250-tree models over ~165k x 225 features takes
+    # many minutes inside the browser (no BLAS/OpenMP in WASM), so the finished table is
+    # stored as lpip_results/full_model_performance.csv and loaded when it exists. Set
+    # force_refit=True (or delete that CSV) to recompute it.
+    force_refit = False
 
-    # 1) Tune XGBoost using ALL variables (Optuna 3-fold CV; cached in param_results/tune_xgb_all.json)
-    best_xgb_all_params, best_xgb_all_score = tune_nuisance(
-        model="xgboost",
-        df=ml_train_df,
-        target_col=outcome_var,            # "mean_delay"
-        exclude_cols=[],                   # keep ALL variables as features
-        cache_name="tune_xgb_all",
-        force_retune=False,
-        n_trials=100,
-        random_state=42,
-    )
+    full_model_performance_df = None
+    if not force_refit:
+        try:
+            full_model_performance_df = load_csv("full_model_performance.csv")
+            print(" Loaded full-model performance from lpip_results/full_model_performance.csv")
+        except Exception:
+            full_model_performance_df = None
 
-    # 2) Tune LightGBM using ALL variables (cached in param_results/tune_lgb_all.json)
-    best_lgb_all_params, best_lgb_all_score = tune_nuisance(
-        model="lightgbm",
-        df=ml_train_df,
-        target_col=outcome_var,
-        exclude_cols=[],
-        cache_name="tune_lgb_all",
-        force_retune=False,
-        n_trials=100,
-        random_state=42,
-    )
+    if full_model_performance_df is None:
+        # 1) Tune XGBoost using ALL variables (Optuna 3-fold CV; cached in lpip_results/tune_xgb_all.json)
+        best_xgb_all_params, best_xgb_all_score = tune_nuisance(
+            model="xgboost",
+            df=ml_train_df,
+            target_col=outcome_var,            # "mean_delay"
+            exclude_cols=[],                   # keep ALL variables as features
+            cache_name="tune_xgb_all",
+            force_retune=False,
+            n_trials=100,
+            random_state=42,
+        )
 
-    # 3) Fit the tuned full models on the training split and score them on the held-out
-    #    test split. These numbers feed the XGBoost vs LightGBM comparison table (cell
-    #    yOPj), where they appear as the "mean_delay (all features)" row.
-    from sklearn.metrics import root_mean_squared_error as _rmse_all, r2_score as _r2_all, mean_absolute_error as _mae_all
+        # 2) Tune LightGBM using ALL variables (cached in lpip_results/tune_lgb_all.json)
+        best_lgb_all_params, best_lgb_all_score = tune_nuisance(
+            model="lightgbm",
+            df=ml_train_df,
+            target_col=outcome_var,
+            exclude_cols=[],
+            cache_name="tune_lgb_all",
+            force_retune=False,
+            n_trials=100,
+            random_state=42,
+        )
 
-    _Xtr = ml_train_df.drop(columns=[outcome_var]).to_numpy()
-    _ytr = ml_train_df[outcome_var].to_numpy()
-    _Xte = ml_test_df.drop(columns=[outcome_var]).to_numpy()
-    _yte = ml_test_df[outcome_var].to_numpy()
+        # 3) Fit the tuned full models on the training split and score them on the held-out
+        #    test split. These numbers feed the XGBoost vs LightGBM comparison table.
+        from sklearn.metrics import root_mean_squared_error as _rmse_all, r2_score as _r2_all, mean_absolute_error as _mae_all
 
-    xgb_all = XGBRegressor(**best_xgb_all_params)
-    xgb_all.fit(_Xtr, _ytr)
-    _xgb_preds = xgb_all.predict(_Xte)
+        _Xtr = ml_train_df.drop(columns=[outcome_var]).to_numpy()
+        _ytr = ml_train_df[outcome_var].to_numpy()
+        _Xte = ml_test_df.drop(columns=[outcome_var]).to_numpy()
+        _yte = ml_test_df[outcome_var].to_numpy()
 
-    lgb_all = LGBMRegressor(**best_lgb_all_params)
-    lgb_all.fit(_Xtr, _ytr)
-    _lgb_preds = lgb_all.predict(_Xte)
+        xgb_all = XGBRegressor(**best_xgb_all_params)
+        xgb_all.fit(_Xtr, _ytr)
+        _xgb_preds = xgb_all.predict(_Xte)
 
-    full_model_performance_df = pd.DataFrame(
-        [
-            {
-                "Model": "XGBoost",
-                "Feature Set": "All variables",
-                "CV RMSE (train)": round(abs(best_xgb_all_score), 4),
-                "Test RMSE": round(float(_rmse_all(_yte, _xgb_preds)), 4),
-                "Test MAE": round(float(_mae_all(_yte, _xgb_preds)), 4),
-                "Test R2": round(float(_r2_all(_yte, _xgb_preds)), 4),
-            },
-            {
-                "Model": "LightGBM",
-                "Feature Set": "All variables",
-                "CV RMSE (train)": round(abs(best_lgb_all_score), 4),
-                "Test RMSE": round(float(_rmse_all(_yte, _lgb_preds)), 4),
-                "Test MAE": round(float(_mae_all(_yte, _lgb_preds)), 4),
-                "Test R2": round(float(_r2_all(_yte, _lgb_preds)), 4),
-            },
-        ]
-    )
+        lgb_all = LGBMRegressor(**best_lgb_all_params)
+        lgb_all.fit(_Xtr, _ytr)
+        _lgb_preds = lgb_all.predict(_Xte)
+
+        full_model_performance_df = pd.DataFrame(
+            [
+                {
+                    "Model": "XGBoost",
+                    "Feature Set": "All variables",
+                    "CV RMSE (train)": round(abs(best_xgb_all_score), 4),
+                    "Test RMSE": round(float(_rmse_all(_yte, _xgb_preds)), 4),
+                    "Test MAE": round(float(_mae_all(_yte, _xgb_preds)), 4),
+                    "Test R2": round(float(_r2_all(_yte, _xgb_preds)), 4),
+                },
+                {
+                    "Model": "LightGBM",
+                    "Feature Set": "All variables",
+                    "CV RMSE (train)": round(abs(best_lgb_all_score), 4),
+                    "Test RMSE": round(float(_rmse_all(_yte, _lgb_preds)), 4),
+                    "Test MAE": round(float(_mae_all(_yte, _lgb_preds)), 4),
+                    "Test R2": round(float(_r2_all(_yte, _lgb_preds)), 4),
+                },
+            ]
+        )
+        if save_local("full_model_performance.csv", full_model_performance_df.to_csv(index=False)):
+            print(" Saved full-model performance to lpip_results/full_model_performance.csv")
+
     print(full_model_performance_df.to_string(index=False))
     return (full_model_performance_df,)
 
