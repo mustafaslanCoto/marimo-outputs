@@ -1697,7 +1697,7 @@ def _(
 @app.cell
 def _(mo):
     mo.md(r"""
-    **What this shows.** Circuity and stop spacing are not distinguishable from zero. Their coefficients change sign between the two learners, and every confidence interval spans zero. Total route distance is the exception: both learners agree on a negative and statistically significant effect, at 0.086 minutes per kilometre with XGBoost (95% confidence interval −0.125 to −0.047) and 0.076 with LightGBM (−0.117 to −0.036).
+    **What this shows.** Circuity and stop spacing are not distinguishable from zero: every confidence interval spans zero, and for stop spacing the two learners even disagree on the sign. Total route distance is the exception: both learners agree on a negative and statistically significant effect, at 0.086 minutes per kilometre with XGBoost (95% confidence interval −0.125 to −0.047) and 0.076 with LightGBM (−0.117 to −0.036).
 
     **Why it matters.** The effect is real but small. A route 10 kilometres longer is associated with roughly 0.8 minutes less delay in a given hour, against a standard deviation of 6.5 minutes in the outcome. The negative sign is best read as timetable slack rather than an operational advantage: longer rural routes tend to carry more recovery time per stop, which offsets the accumulated journey time. It is not a case for lengthening routes.
 
@@ -1727,7 +1727,7 @@ def _(mo):
 
     4. **Do not expect route redesign to fix punctuality.** Circuity and stop spacing have no detectable causal effect. The only significant geometry effect is small, and its sign reflects timetable slack rather than an advantage of longer routes. The levers that remain are timetable padding, traffic management, bus priority and operational control.
 
-    5. **Do not plan around weather, and do close the data gap.** Weather conditions differ by less than a quarter of a minute in median delay once time of day is considered. What the models cannot explain, roughly 60% of the variation, points instead to incidents, roadworks, breakdowns and demand, none of which the panel records. Linking the panel to operational incident logs is the single most valuable next data investment.
+    5. **Do not plan around weather, and do close the data gap.** Clear, overcast and rainy hours differ by about a quarter of a minute in median delay, and that raw gap is confounded with time of day. What the models cannot explain, roughly 60% of the variation, points instead to incidents, roadworks, breakdowns and demand, none of which the panel records. Linking the panel to operational incident logs is the single most valuable next data investment.
     """)
     return
 
