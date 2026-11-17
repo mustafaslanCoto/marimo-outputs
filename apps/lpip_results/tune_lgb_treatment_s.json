@@ -1,0 +1,19 @@
+{
+  "best_params": {
+    "objective": "regression",
+    "n_jobs": 6,
+    "verbose": -1,
+    "random_state": 42,
+    "n_estimators": 200,
+    "learning_rate": 0.1980683189767554,
+    "max_depth": 5,
+    "num_leaves": 42,
+    "min_child_samples": 35,
+    "subsample": 0.9126926131931669,
+    "colsample_bytree": 0.5859941965777181,
+    "min_split_gain": 0.0009182561505045039,
+    "reg_alpha": 0.019305275014187037,
+    "reg_lambda": 0.5418195871514427
+  },
+  "best_score": -0.019903234556805514
+}

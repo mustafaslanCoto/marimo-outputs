@@ -1,0 +1,21 @@
+{
+  "best_params": {
+    "objective": "reg:squarederror",
+    "tree_method": "hist",
+    "n_jobs": 6,
+    "random_state": 42,
+    "max_bin": 128,
+    "n_estimators": 200,
+    "learning_rate": 0.1655652056943828,
+    "max_depth": 7,
+    "max_leaves": 119,
+    "min_child_weight": 30,
+    "subsample": 0.5991941122536131,
+    "colsample_bytree": 0.9688953281952789,
+    "colsample_bylevel": 0.987520095553564,
+    "gamma": 0.10322307324144891,
+    "reg_alpha": 0.010663804346699432,
+    "reg_lambda": 0.15815344371432855
+  },
+  "best_score": -0.02737671566029172
+}
