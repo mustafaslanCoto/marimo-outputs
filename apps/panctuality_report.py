@@ -131,23 +131,94 @@ def _(mo):
 
 
 @app.cell
-def _(mo):
-    mo.md(r"""
-    ## 1. Key findings at a glance
-    """)
-    return
+def _():
+    import os, io, re, sys, time, json, warnings
+    from pathlib import Path
+    import numpy as np
+    import pandas as pd
+    import matplotlib.pyplot as plt
+    import matplotlib as mpl
+
+    warnings.filterwarnings("ignore")
+
+    # DfT Standards & Visual Theme
+    DFT_BANDS = ["Early", "On time", "Late", "Very late"]
+    DFT_COLORS = {
+        "Early": "#2a78d6",      # Bright Blue
+        "On time": "#1baf7a",    # Forest Green
+        "Late": "#eda100",       # Amber Orange
+        "Very late": "#e34948"   # Red
+    }
+    PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"]
+    DOW_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    return DOW_ORDER, Path, io, json, np, pd, plt, sys
 
 
 @app.cell
-def io_helpers(mo):
+def io_helpers(Path, json, mo, pd, sys):
+    # Shared loaders for cached results that ship next to the notebook.
+    # Works locally and as a WASM app on GitHub Pages, using the site's standard
+    # pattern: mo.notebook_location + pyodide open_url / pyfetch in WASM.
+    data_url = mo.notebook_location() / "lpip_results"
+
+
+    def load_csv(name, **kwargs):
+        url = str(data_url / name)
+        if sys.platform == "emscripten":
+            from pyodide.http import open_url
+
+            return pd.read_csv(open_url(url), **kwargs)
+        return pd.read_csv(url, **kwargs)
+
+
+    def load_json(name):
+        url = str(data_url / name)
+        if sys.platform == "emscripten":
+            from pyodide.http import open_url
+
+            return json.loads(open_url(url).read())
+        with open(url, "r") as f:
+            return json.load(f)
+
+
+    def save_local(name, text_or_bytes) -> bool:
+        """Write a file next to the notebook when running locally.
+
+        GitHub Pages (WASM) locations are read-only, so this returns False there
+        and callers treat the cache write as skipped.
+        """
+        if sys.platform == "emscripten":
+            return False
+        path = Path(str(data_url / name))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        mode = "wb" if isinstance(text_or_bytes, bytes) else "w"
+        with open(path, mode) as f:
+            f.write(text_or_bytes)
+        return True
+
+    return data_url, load_csv, load_json, save_local
+
+
+@app.cell(hide_code=True)
+def _(mo):
     mo.md(r"""
-    - **The network runs close to schedule in a typical hour.** Median delay is **1.05 minutes** with an interquartile range of **4.3 minutes**, measured across 236,671 hourly route records that represent **13.4 million vehicle stop observations**.
-    - **Punctuality under the statutory standard is the exception.** Against the Department for Transport window of 1 minute early to 6 minutes late, **55% of observations are on time**, **26% run early**, **10% are late** and **9% are very late**.
-    - **Early running is the hidden reliability problem.** Services between 05:00 and 07:00 have negative median delay, and the earliest Sunday departures run more than 4 minutes ahead of timetable.
-    - **Friday afternoon is the worst window in the week.** Median delay reaches **2.6 minutes at 15:00 on Friday**, more than four times the Saturday figure at the same hour.
-    - **Delay can be predicted in level but not in detail.** A full feature set explains **36 to 39% of the variance** in hourly delay. LightGBM is the stronger learner on all seven prediction tasks, by about 2% lower error on delay itself.
-    - **Route shape is not the cause of rural lateness.** After controlling for weather, time, operator and route, neither circuity nor stop spacing has a detectable effect. Only total route length is significant, at about **0.08 minutes less delay per extra kilometre**, a small effect that most likely reflects timetable padding on longer routes.
-    - **Weather matters less than operators expect.** Clear, overcast and rainy hours all sit within 0.2 minutes of each other in median delay.
+    ### 3.1 Vehicle positions and timetable matching
+
+    **Vehicle positions.** The SIRI-VM feed records an automatic vehicle location ping roughly every minute for every bus in service, archived as daily ZIP files of one-minute snapshots. Reading a whole month into memory at once would need more than 40 GB, so the pipeline streams one snapshot at a time and samples 20% of rows uniformly from each. Consecutive pings from the same vehicle are highly correlated, so a uniform sample preserves the delay distribution while cutting processing time by about five times.
+
+    **Timetable matching.** A vehicle ping does not carry a GTFS trip identifier. It does carry the operator, the route number, the scheduled departure time from the origin and the direction of travel. The pipeline pre-indexes the Welsh national GTFS feed (`20260520_bus_sch`) into three lookups:
+
+    1. the first scheduled stop of every trip, expressed as minutes from midnight;
+    2. a primary key of operator, route, origin minute and direction, with a direction-free fallback;
+    3. per-trip arrays of stop coordinates and scheduled times.
+
+    That index reconstructs the missing link between a moving vehicle and its scheduled trip in milliseconds, rather than the hours a row-by-row spatial join over 1.2 million stop records would take.
+
+    **Measuring lateness.** For each ping the pipeline finds the nearest stop on the matched trip using great-circle distance, keeps observations within 200 metres, and compares the observed time with the scheduled time at that stop. The difference is unwrapped around midnight so that a bus crossing 00:00 is not recorded as 24 hours late:
+
+    $$\text{delay} = (t_{\text{observed}} - t_{\text{scheduled}} + 720) \bmod 1440 - 720$$
+
+    Measuring against the nearest stop rather than the origin matters. An origin-based measure accumulates the whole journey and would show an on-time bus as 30 to 45 minutes late halfway along its route. The 200 metre filter keeps only genuine arrival and dwell events, where a timetable comparison is meaningful.
     """)
     return
 
@@ -155,31 +226,11 @@ def io_helpers(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 2. Policy context: why a few minutes matter in rural Wales
-    """)
-    return
+    ### 3.2 Weather observations
 
+    Hourly observations from Cardiff cover temperature, rainfall, humidity, wind speed and a short description of conditions. Weather enters the analysis as an exogenous driver: rain and wind reduce operating speeds, lengthen boarding and increase stopping distances, so the effect should be visible in the panel if it matters.
 
-@app.cell(hide_code=True)
-def _(mo):
-    mo.md(r"""
-    In an urban area a bus every five minutes absorbs a delayed vehicle: passengers take the next one. Rural Welsh networks work differently. Services across Powys, Ceredigion, Gwynedd, Carmarthenshire and Pembrokeshire often run on 60 to 120 minute headways, so one late bus can mean two hours of lost access to work, healthcare or education.
-
-    Two features of that timetable shape everything that follows.
-
-    - **Early departures are worse than moderate lateness.** A bus that leaves ahead of schedule strands passengers who arrived on time, and on many routes there is no later service that day.
-    - **Variability matters as much as the average.** A service that is consistently four minutes late can be planned around. The same average delay with a wide spread produces missed connections and lost confidence.
-
-    Punctuality is classified with the UK Department for Transport and Traffic Commissioner bands:
-
-    | Band | Definition | Meaning for passengers |
-    |---|---|---|
-    | Early | more than 1 minute before timetable | a service failure: the bus may already have gone |
-    | On time | 1 minute early to 5 minutes 59 seconds late | the national target is 95% of services |
-    | Late | 6 to 14 minutes 59 seconds late | noticeable, usually recoverable |
-    | Very late | 15 minutes or more late | severe breakdown, journey abandoned |
-
-    The analysis answers three questions in sequence. How late are buses, and when? How much of that delay can be predicted from the data? And what part of the remaining variation is genuinely caused by the shape of the route?
+    Observations are keyed to `timestamp_hour`, which allows a one-to-one join onto the bus panel. One limitation belongs up front: the station is in Cardiff while many routes run across mid and north Wales. The measure therefore captures regional weather imperfectly, and any estimated effect should be read as a lower bound.
     """)
     return
 
@@ -211,13 +262,24 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    **Cymru Wledig Local Partnership and Innovation Plan (LPIP) · Research placement report**
-    Prepared by Mustafa Aslan · November 2026
+    ### 3.4 What the panel contains
 
-    This report examines five months of bus vehicle tracking data from rural and regional Wales, matched to the national timetable and to hourly weather observations. It describes how late buses actually run, tests how much of that delay can be predicted, and isolates the causal effect of route geometry on punctuality.
+    | Variable | Meaning |
+    |---|---|
+    | `day`, `hour`, `dow`, `month` | calendar date, clock hour, day of week and month of the route-hour |
+    | `operator`, `operator_name`, `line` | National Operator Code, operator name and commercial route number |
+    | `n_obs` | number of vehicle stop observations behind the route-hour |
+    | `mean_delay`, `median_delay` | lateness in minutes against the scheduled time at the nearest stop |
+    | `iqr_delay` | interquartile range of delay within the route-hour (p75 minus p25) |
+    | `early_pct`, `on_time_pct`, `late_pct`, `very_late_pct` | share of observations in each Department for Transport band |
+    | `planned_stops`, `total_dist_km` | scheduled stops and cumulative route length |
+    | `avg_stop_spacing_km` | route length divided by the number of scheduled gaps |
+    | `circuity_ratio` | route length divided by the straight-line distance to the farthest point reached |
+    | `sched_duration_min`, `sched_speed_kmh` | scheduled running time and average scheduled speed |
+    | `temperature_c`, `precipitation_mm` | hourly temperature and rainfall from the Cardiff station |
+    | `relative_humidity_pct`, `wind_speed_kmh`, `condition` | hourly humidity, wind and a short text description of conditions |
 
-    **Data:** SIRI-VM vehicle positions, the GTFS timetable feed for Wales, and Cardiff hourly weather.
-    **Code and cached results:** [github.com/mustafaslanCoto/marimo-outputs](https://github.com/mustafaslanCoto/marimo-outputs)
+    Hours between 00:00 and 04:59 are excluded from the analysis because they contain almost no scheduled service. The full panel is loaded once from the parquet file beside this notebook, and every figure and model below is derived from it.
     """)
     return
 
