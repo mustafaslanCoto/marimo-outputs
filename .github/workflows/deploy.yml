@@ -73,6 +73,14 @@ jobs:
           # Copy images and assets
           cp -r apps/images _site/apps/ 2>/dev/null || true
           cp -r apps/public _site/apps/ 2>/dev/null || true
+
+          # Copy data/results folders that notebooks load at runtime via
+          # mo.notebook_location() (for example panctuality_marimo.py reads
+          # lpip_data/hourly_bus_delay_panel.parquet and lpip_results/*.json|csv).
+          # Without these, the published WASM app gets a 404 HTML page instead
+          # of the file and pandas raises ArrowInvalid / ParserError.
+          cp -r apps/lpip_data _site/apps/ 2>/dev/null || true
+          cp -r apps/lpip_results _site/apps/ 2>/dev/null || true
           
           # 🚨 CRITICAL FIX: Copy the new html and css folders to the deployment site
           cp -r apps/html _site/apps/ 2>/dev/null || true
