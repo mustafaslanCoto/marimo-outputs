@@ -804,7 +804,6 @@ def _(DOW_ORDER, hourly_dfilter, mo, np, plt):
     plt.close(_fig)
 
     _heat_chart
-
     return
 
 
@@ -861,7 +860,6 @@ def _(hourly_dfilter, mo, plt):
     plt.close(_fig)
 
     _op_chart
-
     return
 
 
@@ -1496,7 +1494,6 @@ def _(
 
     interactive_accuracy_tabs = mo.ui.tabs(_tabs_dict)
     interactive_accuracy_tabs
-
     return
 
 
