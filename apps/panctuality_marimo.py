@@ -1,31 +1,18 @@
 # /// script
 # requires-python = ">=3.13,<3.15"
 # dependencies = [
-#     "altair==6.3.0",
 #     "doubleml>=0.11.4",
-#     "duckdb==2.0.0",
 #     "lightgbm>=4.6.0",
 #     "marimo>=0.23.3",
 #     "marimo-lens>=0.2.3",
 #     "matplotlib>=3.11.2",
-#     "mcp>=2.0.0",
-#     "nbformat==5.11.1",
 #     "numpy>=2.5.4",
-#     "openai==3.45.0",
 #     "optuna>=5.0.0",
 #     "pandas>=3.1.0",
-#     "polars[pyarrow]==2.1.0",
 #     "pyarrow>=14.0.0",
-#     "pytest==9.2.0",
-#     "python-lsp-ruff==2.3.4",
-#     "python-lsp-server==1.15.0",
 #     "scikit-learn>=1.9.1",
-#     "sqlglot==30.29.0",
 #     "statsmodels>=0.15.0",
-#     "vegafusion==2.0.3",
-#     "vl-convert-python==1.9.0.post1",
-#     "websockets==17.4",
-#     "xgboost>=3.4.1"
+#     "xgboost>=3.4.1",
 # ]
 #
 # ///
