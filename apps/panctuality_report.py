@@ -37,19 +37,27 @@ def _(mo):
 
 @app.cell
 def _(mo):
+    mo.outline(label="Table of Contents")
+    return
+
+
+@app.cell
+def _(mo):
     mo.md(r"""
     **Cymru Wledig Local Partnership and Innovation Plan (LPIP) · Research placement report**
+
     Prepared by Mustafa Aslan · November 2026
 
     This report examines five months of bus vehicle tracking data from rural and regional Wales, matched to the national timetable and to hourly weather observations. It describes how late buses actually run, tests how much of that delay can be predicted, and isolates the causal effect of route geometry on punctuality.
 
     **Data:** SIRI-VM vehicle positions, the GTFS timetable feed for Wales, and Cardiff hourly weather.
+
     **Code and cached results:** [github.com/mustafaslanCoto/marimo-outputs](https://github.com/mustafaslanCoto/marimo-outputs)
     """)
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 1. Key findings at a glance
@@ -57,7 +65,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     - **The network runs close to schedule in a typical hour.** Median delay is **1.05 minutes** with an interquartile range of **4.3 minutes**, measured across 236,671 hourly route records that represent **13.4 million vehicle stop observations**.
@@ -71,7 +79,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 2. Policy context: why a few minutes matter in rural Wales
@@ -79,7 +87,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     In an urban area a bus every five minutes absorbs a delayed vehicle: passengers take the next one. Rural Welsh networks work differently. Services across Powys, Ceredigion, Gwynedd, Carmarthenshire and Pembrokeshire often run on 60 to 120 minute headways, so one late bus can mean two hours of lost access to work, healthcare or education.
