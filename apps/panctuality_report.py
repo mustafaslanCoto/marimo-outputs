@@ -490,7 +490,7 @@ def _(hourly_dfilter, mo, plt):
 @app.cell
 def _(mo):
     mo.md(r"""
-    **What this shows.** Early services run ahead of timetable: the median between 05:00 and 07:00 is between 0.7 and 0.2 minutes early, and the lower band shows that on a quarter of days the 05:00 median is close to 2 minutes early. Delay rises sharply after 08:00 and forms a broad plateau from 11:00 to 16:00, where the median sits around 1.6 to 1.7 minutes. It eases after 17:00 even though the number of observations is highest then.
+    **What this shows.** Early services run ahead of timetable: the median between 05:00 and 07:00 runs between 0.2 and 0.7 minutes early, and the lower band shows that on a quarter of days the 05:00 median is close to 2 minutes early. Delay rises sharply after 08:00 and forms a broad plateau from 11:00 to 16:00, where the median sits around 1.6 to 1.7 minutes. It eases after 17:00 even though the number of observations is highest then.
 
     **Why it matters.** The gap between the morning median and the timetable is the clearest evidence of early running in the data, and it is a service failure that a lateness target alone does not capture. The midday plateau coincides with shopping, school and health appointment travel, when a missed connection is most costly.
     """)
@@ -1037,7 +1037,7 @@ def _(mo):
     mo.md(r"""
     ### 5.1 What the models see
 
-    The modelling table drops identifiers, counters and every punctuality share that is derived from the outcome itself, leaving 17 predictors across four families: time (hour, day of week), operations (operator, route line), weather (temperature, rainfall, humidity, wind, conditions) and route geometry (stops, total distance, stop spacing, circuity, scheduled duration and speed). Categorical columns become indicator variables, which takes the table to 225 columns, of which 224 are predictors.
+    The modelling table drops identifiers, counters and every punctuality share that is derived from the outcome itself, leaving 17 predictors across five families: time (hour, day of week), operations (operator, route line), weather (temperature, rainfall, humidity, wind, conditions), route geometry (stops, total and maximum reach distance, stop spacing, circuity, scheduled duration and speed) and distance from Cardiff. Categorical columns become indicator variables, which takes the table to 225 columns, of which 224 are predictors.
 
     One row is still one route-hour. The table below shows the shape of the data the models receive, with route geometry repeated across the hours of a given route and delay-varying hour by hour.
     """)
@@ -1168,7 +1168,7 @@ def _(mo, ols_results):
     mo.vstack([
         _fit_card,
         mo.accordion({
-            "Full regression table (224 coefficients)": mo.Html(
+            "Full regression table": mo.Html(
                 getattr(ols_results, "summary_html", None)
                 or ols_results.summary().as_html()
             )
