@@ -1,0 +1,7 @@
+Target Variable,Target Column,XGBoost Test RMSE,LightGBM Test RMSE,Best Model,RMSE Diff (XGB - LGB),% Diff (vs LGB)
+mean_delay (excl. circuity),mean_delay,5.1107,5.0437,LightGBM,0.0669,1.33
+mean_delay (excl. stop spacing),mean_delay,5.0961,5.0523,LightGBM,0.0438,0.87
+mean_delay (excl. total dist),mean_delay,5.0948,5.0611,LightGBM,0.0336,0.66
+circuity_ratio,circuity_ratio,0.0697,0.0565,LightGBM,0.0132,23.37
+avg_stop_spacing_km,avg_stop_spacing_km,0.0241,0.0181,LightGBM,0.006,32.89
+total_dist_km,total_dist_km,0.6917,0.6508,LightGBM,0.0408,6.27

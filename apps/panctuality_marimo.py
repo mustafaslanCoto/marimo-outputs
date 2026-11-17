@@ -33,10 +33,7 @@
 import marimo
 
 __generated_with = "0.25.2"
-app = marimo.App(
-    width="full",
-    layout_file="layouts/panctuality_marimo.slides.json",
-)
+app = marimo.App(width="full")
 
 
 @app.cell
@@ -54,7 +51,7 @@ def _(mo):
 
     **Research Placement:** Cymru Wledig Local Partnership & Innovation Plan (Rural Wales)
     **Target Policy Focus:** Bus Service Punctuality, Headway Vulnerability, and Rural Accessibility
-    **Live Telematics Data:** SIRI-VM (Automatic Vehicle Location tracking from local daily archives in `data/siri_zips`)
+    **Live Telematics Data:** SIRI-VM (Automatic Vehicle Location tracking from local daily archives)
     **Scheduled Timetable:** GTFS (General Transit Feed Specification for Wales)
     **Meteorological Data:** Cardiff Hourly Weather (Temperature, Rain, Wind, Conditions)
 
@@ -122,7 +119,63 @@ def _():
     }
     PALETTE = ["#2a78d6", "#eb6834", "#1baf7a", "#eda100", "#e87ba4", "#008300", "#4a3aa7", "#e34948"]
     DOW_ORDER = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
-    return DOW_ORDER, GTFS_DIR, Path, RESULTS_DIR, WEATHER_CSV, np, pd, plt
+    return (
+        DOW_ORDER,
+        GTFS_DIR,
+        Path,
+        RESULTS_DIR,
+        WEATHER_CSV,
+        json,
+        np,
+        pd,
+        plt,
+        sys,
+    )
+
+
+@app.cell
+def io_helpers(Path, json, mo, pd, sys):
+    # Shared loaders for cached results that ship next to the notebook.
+    # Works locally and as a WASM app on GitHub Pages, using the site's standard
+    # pattern: mo.notebook_location + pyodide open_url / pyfetch in WASM.
+    data_url = mo.notebook_location() / "lpip_results"
+
+
+    def load_csv(name, **kwargs):
+        url = str(data_url / name)
+        if sys.platform == "emscripten":
+            from pyodide.http import open_url
+
+            return pd.read_csv(open_url(url), **kwargs)
+        return pd.read_csv(url, **kwargs)
+
+
+    def load_json(name):
+        url = str(data_url / name)
+        if sys.platform == "emscripten":
+            from pyodide.http import open_url
+
+            return json.loads(open_url(url).read())
+        with open(url, "r") as f:
+            return json.load(f)
+
+
+    def save_local(name, text_or_bytes) -> bool:
+        """Write a file next to the notebook when running locally.
+
+        GitHub Pages (WASM) locations are read-only, so this returns False there
+        and callers treat the cache write as skipped.
+        """
+        if sys.platform == "emscripten":
+            return False
+        path = Path(str(data_url / name))
+        path.parent.mkdir(parents=True, exist_ok=True)
+        mode = "wb" if isinstance(text_or_bytes, bytes) else "w"
+        with open(path, mode) as f:
+            f.write(text_or_bytes)
+        return True
+
+    return
 
 
 @app.cell(hide_code=True)
@@ -700,9 +753,14 @@ def _(mo):
 
 
 @app.cell
-def _(pd):
+def _(mo, pd):
     ## read from parquet file
-    hourly_df = pd.read_parquet('results/hourly_bus_delay_panel.parquet')
+    # Load the panel from the data folder next to the notebook. This works both
+    # locally and as a WASM app on GitHub Pages (mo.notebook_location resolves
+    # to the notebook's directory / public URL).
+    hourly_df = pd.read_parquet(
+        mo.notebook_location() / "lpip_data" / "hourly_bus_delay_panel.parquet"
+    )
     return (hourly_df,)
 
 
