@@ -1641,7 +1641,7 @@ def _(mo):
 
     The models above are benchmarks, not a tool. This section turns the best one, LightGBM with all features, into a simple check: choose an hour, a day, an operator, a route and a set of conditions, and see the delay the model expects, with an interval that reflects how wrong it usually is.
 
-    The interval is built from 10,000 errors the model made on the training data. Adding those errors to a point prediction and taking the 10th and 90th percentiles gives a range that contains the outcome about 80% of the time in the data the model has seen. It is an illustration of model uncertainty, not a forecast for a specific journey.
+    The range around the prediction reflects how widely this model's errors vary. It is an illustration of model uncertainty, not a forecast for a specific journey.
 
     Prediction is where this report started, and it is not where it ends. A model can tell us which hours and routes are likely to be late; it cannot tell us what would happen if a route were redesigned. That is the causal question in section 6.
     """)
@@ -1649,7 +1649,7 @@ def _(mo):
 
 
 @app.cell
-def _(data_url, load_csv, sys):
+def _(data_url, ml_train_df, outcome_var, pd, sys):
     import lightgbm as lgb
 
     _model_path = data_url / "lgb_full_model.txt"
@@ -1660,7 +1660,14 @@ def _(data_url, load_csv, sys):
     else:
         lgb_predictor = lgb.Booster(model_file=str(_model_path))
 
-    lgb_residuals_sample = load_csv("lgb_train_residuals_sample.csv")["residual"]
+    _feature_columns = [c for c in ml_train_df.columns if c != outcome_var]
+    _sample = ml_train_df.sample(n=20000, random_state=42)
+    _sample_pred = lgb_predictor.predict(_sample[_feature_columns].to_numpy())
+    lgb_residuals_sample = pd.Series(
+        _sample[outcome_var].to_numpy() - _sample_pred,
+        name="residual",
+    ).sample(n=10000, random_state=42)
+    print(f"Loaded prediction model and computed {len(lgb_residuals_sample):,} residuals from the training sample.")
     return lgb_predictor, lgb_residuals_sample
 
 
@@ -1674,61 +1681,65 @@ def _(DOW_ORDER, hourly_dfilter, mo, model_df):
     _default_operator = model_df["operator"].value_counts().index[0]
 
 
-    def _num(col, step, label, lo=None, hi=None):
-        _lo = float(model_df[col].min()) if lo is None else lo
-        _hi = float(model_df[col].quantile(0.99)) if hi is None else hi
+    def _num(col, step, label):
         return mo.ui.number(
-            start=_lo,
-            stop=_hi,
+            start=float(model_df[col].min()),
+            stop=float(model_df[col].quantile(0.99)),
             step=step,
             value=round(float(model_df[col].median()), 2),
             label=label,
         )
 
 
-    prediction_inputs = {
-        "hour": mo.ui.dropdown(options=_hours, value=12, label="Hour"),
-        "dow": mo.ui.dropdown(options=DOW_ORDER, value="Friday", label="Day of week"),
-        "operator": mo.ui.dropdown(options=_operator_options, value=_operator_names[_default_operator], label="Operator"),
-        "line": mo.ui.dropdown(options=_lines, value=model_df["line"].value_counts().index[0], label="Route line", searchable=True),
-        "condition": mo.ui.dropdown(options=_conditions, value="Overcast" if "Overcast" in _conditions else _conditions[0], label="Weather"),
-        "planned_stops": _num("planned_stops", 1, "Planned stops"),
-        "total_dist_km": _num("total_dist_km", 0.5, "Total distance (km)"),
-        "max_reach_km": _num("max_reach_km", 0.5, "Maximum reach (km)"),
-        "avg_stop_spacing_km": _num("avg_stop_spacing_km", 0.01, "Average stop spacing (km)"),
-        "circuity_ratio": _num("circuity_ratio", 0.01, "Circuity ratio"),
-        "sched_duration_min": _num("sched_duration_min", 1, "Scheduled duration (min)"),
-        "sched_speed_kmh": _num("sched_speed_kmh", 0.5, "Scheduled speed (km/h)"),
-        "origin_dist_cardiff_km": _num("origin_dist_cardiff_km", 1, "Distance from Cardiff (km)"),
-        "temperature_c": _num("temperature_c", 0.5, "Temperature (C)"),
-        "precipitation_mm": _num("precipitation_mm", 0.1, "Rainfall (mm)"),
-        "relative_humidity_pct": _num("relative_humidity_pct", 1, "Humidity (%)"),
-        "wind_speed_kmh": _num("wind_speed_kmh", 1, "Wind speed (km/h)"),
-    }
+    pred_hour = mo.ui.dropdown(options=_hours, value=12, label="Hour")
+    pred_dow = mo.ui.dropdown(options=DOW_ORDER, value="Friday", label="Day of week")
+    pred_operator = mo.ui.dropdown(options=_operator_options, value=_operator_names[_default_operator], label="Operator")
+    pred_line = mo.ui.dropdown(options=_lines, value=model_df["line"].value_counts().index[0], label="Route line", searchable=True)
+    pred_condition = mo.ui.dropdown(
+        options=_conditions,
+        value="Overcast" if "Overcast" in _conditions else _conditions[0],
+        label="Weather",
+    )
+
+    pred_planned_stops = _num("planned_stops", 1, "Planned stops")
+    pred_total_dist = _num("total_dist_km", 0.5, "Total distance (km)")
+    pred_max_reach = _num("max_reach_km", 0.5, "Maximum reach (km)")
+    pred_stop_spacing = _num("avg_stop_spacing_km", 0.01, "Average stop spacing (km)")
+    pred_circuity = _num("circuity_ratio", 0.01, "Circuity ratio")
+    pred_sched_duration = _num("sched_duration_min", 1, "Scheduled duration (min)")
+    pred_sched_speed = _num("sched_speed_kmh", 0.5, "Scheduled speed (km/h)")
+    pred_origin_distance = _num("origin_dist_cardiff_km", 1, "Distance from Cardiff (km)")
+    pred_temperature = _num("temperature_c", 0.5, "Temperature (C)")
+    pred_precipitation = _num("precipitation_mm", 0.1, "Rainfall (mm)")
+    pred_humidity = _num("relative_humidity_pct", 1, "Humidity (%)")
+    pred_wind = _num("wind_speed_kmh", 1, "Wind speed (km/h)")
 
     mo.vstack([
         mo.md("**Service**"),
-        mo.hstack(
-            [prediction_inputs[k] for k in ("hour", "dow", "operator", "line", "condition")],
-            wrap=True,
-            gap=0.8,
-            justify="start",
-        ),
+        mo.hstack([pred_hour, pred_dow, pred_operator, pred_line, pred_condition], wrap=True, gap=0.8, justify="start"),
         mo.md("**Route geometry and weather**"),
-        mo.hstack(
-            [prediction_inputs[k] for k in ("planned_stops", "total_dist_km", "max_reach_km", "avg_stop_spacing_km", "circuity_ratio", "sched_duration_min")],
-            wrap=True,
-            gap=0.8,
-            justify="start",
-        ),
-        mo.hstack(
-            [prediction_inputs[k] for k in ("sched_speed_kmh", "origin_dist_cardiff_km", "temperature_c", "precipitation_mm", "relative_humidity_pct", "wind_speed_kmh")],
-            wrap=True,
-            gap=0.8,
-            justify="start",
-        ),
+        mo.hstack([pred_planned_stops, pred_total_dist, pred_max_reach, pred_stop_spacing, pred_circuity, pred_sched_duration], wrap=True, gap=0.8, justify="start"),
+        mo.hstack([pred_sched_speed, pred_origin_distance, pred_temperature, pred_precipitation, pred_humidity, pred_wind], wrap=True, gap=0.8, justify="start"),
     ])
-    return (prediction_inputs,)
+    return (
+        pred_circuity,
+        pred_condition,
+        pred_dow,
+        pred_hour,
+        pred_humidity,
+        pred_line,
+        pred_max_reach,
+        pred_operator,
+        pred_origin_distance,
+        pred_planned_stops,
+        pred_precipitation,
+        pred_sched_duration,
+        pred_sched_speed,
+        pred_stop_spacing,
+        pred_temperature,
+        pred_total_dist,
+        pred_wind,
+    )
 
 
 @app.cell
@@ -1738,47 +1749,76 @@ def _(
     lgb_residuals_sample,
     ml_train_df,
     mo,
+    model_df,
     outcome_var,
     pd,
-    plt,
-    prediction_inputs,
+    pred_circuity,
+    pred_condition,
+    pred_dow,
+    pred_hour,
+    pred_humidity,
+    pred_line,
+    pred_max_reach,
+    pred_operator,
+    pred_origin_distance,
+    pred_planned_stops,
+    pred_precipitation,
+    pred_sched_duration,
+    pred_sched_speed,
+    pred_stop_spacing,
+    pred_temperature,
+    pred_total_dist,
+    pred_wind,
 ):
-    _input_row = pd.DataFrame([{k: w.value for k, w in prediction_inputs.items()}])
+    _input = {
+        "hour": pred_hour.value,
+        "dow": pred_dow.value,
+        "operator": pred_operator.value,
+        "line": pred_line.value,
+        "condition": pred_condition.value,
+        "planned_stops": pred_planned_stops.value,
+        "total_dist_km": pred_total_dist.value,
+        "max_reach_km": pred_max_reach.value,
+        "avg_stop_spacing_km": pred_stop_spacing.value,
+        "circuity_ratio": pred_circuity.value,
+        "sched_duration_min": pred_sched_duration.value,
+        "sched_speed_kmh": pred_sched_speed.value,
+        "origin_dist_cardiff_km": pred_origin_distance.value,
+        "temperature_c": pred_temperature.value,
+        "precipitation_mm": pred_precipitation.value,
+        "relative_humidity_pct": pred_humidity.value,
+        "wind_speed_kmh": pred_wind.value,
+    }
+
+    for _key, _value in list(_input.items()):
+        if _value is None and _key in model_df.columns:
+            if model_df[_key].dtype.kind in "if":
+                _input[_key] = float(model_df[_key].median())
+            else:
+                _input[_key] = model_df[_key].mode().iloc[0]
+
+    _input_row = pd.DataFrame([_input])
     _dummies = pd.get_dummies(_input_row, columns=dum_vars, drop_first=False, dtype=int, prefix_sep="_")
     _feature_cols = [c for c in ml_train_df.columns if c != outcome_var]
     _X = _dummies.reindex(columns=_feature_cols, fill_value=0)
 
-    _pred = float(lgb_predictor.predict(_X.to_numpy())[0])
-    _ci_low = float(_pred + lgb_residuals_sample.quantile(0.10))
-    _ci_high = float(_pred + lgb_residuals_sample.quantile(0.90))
+    prediction_minutes = float(lgb_predictor.predict(_X.to_numpy())[0])
+    _ci_low = float(prediction_minutes + lgb_residuals_sample.quantile(0.10))
+    _ci_high = float(prediction_minutes + lgb_residuals_sample.quantile(0.90))
 
-    _fig, _ax = plt.subplots(figsize=(9, 2.6), dpi=120, facecolor="#fafafa")
-    _ax.set_facecolor("#ffffff")
-    _ax.hist(_pred + lgb_residuals_sample, bins=50, color="#38bdf8", edgecolor="#0284c7", alpha=0.75, density=True)
-    _ax.axvline(_pred, color="#0f172a", lw=2, label=f"Prediction ({_pred:.1f} min)")
-    _ax.axvline(_ci_low, color="#ef4444", linestyle="--", lw=1.4, label="10th and 90th percentile")
-    _ax.axvline(_ci_high, color="#ef4444", linestyle="--", lw=1.4)
-    _ax.set_xlabel("Delay (minutes)", fontsize=10, fontweight="bold", color="#334155")
-    _ax.set_yticks([])
-    _ax.set_title("Predicted delay and the spread of training errors", fontsize=11.5, fontweight="bold", color="#0f172a")
-    _ax.grid(axis="x", linestyle="--", alpha=0.25, color="#64748b")
-    for _sp in ["top", "right", "left"]:
-        _ax.spines[_sp].set_visible(False)
-    _ax.spines["bottom"].set_color("#cbd5e1")
-    _ax.legend(loc="upper right", frameon=True, facecolor="#ffffff", edgecolor="#e2e8f0", fontsize=8.5)
-    plt.tight_layout()
-    _chart = mo.as_html(_fig)
-    plt.close(_fig)
-
-    mo.vstack([
-        mo.md(rf"""
-    **Predicted delay: {_pred:.1f} minutes** · 80% interval **{_ci_low:.1f} to {_ci_high:.1f} minutes**
-
-    A prediction near zero means the service is expected on time; a negative value means early.
-    """),
-        _chart,
-        mo.md("*Point prediction from LightGBM with all features. The interval adds 10,000 training errors to the point prediction and takes their 10th and 90th percentiles. It is an illustration of model uncertainty, not a forecast for a specific journey.*"),
-    ])
+    mo.md(rf"""
+    <div style="display:flex; gap:16px; flex-wrap:wrap; margin:6px 0 2px 0;">
+      <div style="flex:1; min-width:220px; border:1px solid #dbeafe; background:#f8fafc; border-radius:14px; padding:18px 22px;">
+        <div style="font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:#64748b;">Predicted delay</div>
+        <div style="font-size:46px; font-weight:700; line-height:1.1; color:#0f172a;">{prediction_minutes:.1f}<span style="font-size:18px; font-weight:500;"> minutes</span></div>
+      </div>
+      <div style="flex:1; min-width:220px; border:1px solid #e2e8f0; background:#ffffff; border-radius:14px; padding:18px 22px;">
+        <div style="font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:#64748b;">Likely range</div>
+        <div style="font-size:30px; font-weight:650; line-height:1.25; color:#0f172a;">{_ci_low:.1f} to {_ci_high:.1f}<span style="font-size:16px; font-weight:500;"> minutes</span></div>
+      </div>
+    </div>
+    <p style="color:#64748b; font-size:13px; margin-top:6px;">0 means on time; negative values mean early.</p>
+    """)
     return
 
 
@@ -2074,11 +2114,7 @@ def _(mo):
 @app.cell
 def _(mo):
     mo.md(r"""
-    The notebook is both the report and the script that produces it. It loads the hourly panel from `lpip_data/hourly_bus_delay_panel.parquet` beside the notebook and the saved results from `lpip_results/`, resolving both through `mo.notebook_location()`. The same code therefore runs locally and as a WebAssembly app on GitHub Pages.
-
-    No model is refitted in the browser. The tuning parameters, accuracy comparison, OLS summary and six causal tables are stored as JSON and CSV files, and the cells fall back to refitting only when a cache is missing. That keeps the page usable while preserving full reproducibility: delete `lpip_results/`, set the corresponding `rerun` or `force_retune` flag to `True`, and every table is rebuilt from the panel.
-
-    The environment is declared in the notebook header with nine dependencies. `doubleml` and `optuna` are imported lazily inside the refitting functions, so a reader who only views the results never pays their install cost.
+    The notebook, the hourly panel and the cached results are public on GitHub: [github.com/mustafaslanCoto/marimo-outputs](https://github.com/mustafaslanCoto/marimo-outputs). The published version of this report is at [mustafaslancoto.github.io/marimo-outputs/apps/panctuality_report.html](https://mustafaslancoto.github.io/marimo-outputs/apps/panctuality_report.html). Running the notebook reproduces every figure and table.
     """)
     return
 
@@ -2503,6 +2539,35 @@ def _(
         best_lgb_md,
         best_lgb_ms,
     )
+
+
+@app.cell
+def _(mo):
+    mo.md(r"""
+    ### 8.4 How the prediction model and its interval were built
+
+    The model used in section 5.4 is the LightGBM all-feature model, fitted once with the tuned parameters stored in `lpip_results/tune_lgb_all.json`:
+
+    ```python
+    params = json.load(open("lpip_results/tune_lgb_all.json"))["best_params"]
+    features = [c for c in ml_train_df.columns if c != "mean_delay"]
+
+    model = lgb.LGBMRegressor(**params)
+    model.fit(ml_train_df[features], ml_train_df["mean_delay"])
+    model.booster_.save_model("lpip_results/lgb_full_model.txt")
+    ```
+
+    The interval adds the model's own errors to the point prediction. In the notebook those errors are computed on load from a 20,000-row sample of the training data, and 10,000 are kept:
+
+    ```python
+    sample = ml_train_df.sample(n=20000, random_state=42)
+    residuals = sample["mean_delay"] - model.predict(sample[features])
+    residuals = residuals.sample(n=10000, random_state=42)
+    ```
+
+    The 10th and 90th percentiles of those residuals, added to the point prediction, give the range shown in section 5.4.
+    """)
+    return
 
 
 @app.cell
