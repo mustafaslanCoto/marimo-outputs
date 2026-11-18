@@ -1325,9 +1325,9 @@ def _(mo):
     mo.md(r"""
     The second benchmark is gradient boosting, which learns non-linear effects and interactions without being told their form. For each prediction task, XGBoost and LightGBM are tuned by automatic hyperparameter search (Optuna) using cross-validation on the training set only, then scored once on the held-out test set.
 
-    Tuning is not only a prediction exercise. Three of these models estimate delay conditional on the controls, and three estimate a geometry measure conditional on the same controls. Those six models are the nuisance functions of the causal model in section 6. The better they predict, the more completely they absorb confounding, which is why the tuned learners are reused there rather than refitted with defaults. A model that predicts delay well but treatment poorly would leave part of the confounding in the residual and bias the causal estimate.
+    Tuning is not only a prediction exercise. Three of these models estimate delay conditional on the controls, and three estimate a geometry measure conditional on the same controls. Those six models are the adjustment functions (nuisance functions) of the causal model in section 6. The better they predict, the more completely they absorb confounding, which is why the tuned learners are reused there rather than refitted with defaults. A model that predicts delay well but treatment poorly would leave part of the confounding in the residual and bias the causal estimate.
 
-    The table below reports the two all-feature models. The tabs that follow break the same comparison down by task: delay with one geometry variable excluded, and the geometry variables themselves, which is exactly the nuisance work the causal model in section 6 requires.
+    The table below reports the two all-feature models. The tabs that follow break the same comparison down by task: delay with one geometry variable excluded, and the geometry variables themselves, which is exactly the adjustment work the causal model in section 6 requires.
     """)
     return
 
@@ -1833,7 +1833,7 @@ def _(mo):
 
     The problem is confounding. Long routes differ from short ones not only in length but in the operators that run them, the hours they serve, the terrain they cross and the timetable padding they carry. A naive regression would attribute all of that to geometry. OLS in particular forces every control to enter linearly and additively, so when delay responds non-linearly to hour, weather or route length, the geometry coefficients absorb the misfit. Adding interactions does not solve this: it requires knowing which interactions matter, and the model still imposes a functional form.
 
-    Double machine learning avoids that by learning the two nuisance functions with gradient boosting, then estimating the geometry effect from their residuals after cross-fitting. Section 6.2 shows how much the answer changes: the linear model finds a large, significant circuity effect and a positive distance effect; the flexible causal model finds no circuity effect and a negative distance effect.
+    Double machine learning avoids that by learning the two adjustment functions (nuisance functions) with gradient boosting, then estimating the geometry effect from their residuals after cross-fitting. Section 6.2 shows how much the answer changes: the linear model finds a large, significant circuity effect and a positive distance effect; the flexible causal model finds no circuity effect and a negative distance effect.
     """)
     return
 
@@ -1847,7 +1847,7 @@ def _(mo):
 
     $$Y = \theta D + g(X) + U, \qquad D = m(X) + V$$
 
-    Here $Y$ is hourly mean delay, $D$ is one route geometry measure at a time, and $X$ is the full set of controls: weather, hour, day of week, operator and route. The nuisance functions $g(X)$ and $m(X)$ are learned with gradient boosting, and $\theta$ is estimated from their residuals using three-fold cross-fitting with five repetitions. Cross-fitting removes the bias that would arise if the same observations were used both to learn the nuisance functions and to estimate the effect.
+    Here $Y$ is hourly mean delay, $D$ is one route geometry measure at a time, and $X$ is the full set of controls: weather, hour, day of week, operator and route. The adjustment functions (nuisance functions) $g(X)$ and $m(X)$ are learned with gradient boosting, and $\theta$ is estimated from their residuals using three-fold cross-fitting with five repetitions. Cross-fitting removes the bias that would arise if the same observations were used both to learn the nuisance functions and to estimate the effect.
 
     The quantity $\theta$ has a direct reading: the change in hourly delay, in minutes, associated with a one-unit change in the geometry measure, holding weather, time, operator and route constant. Three treatments are tested separately:
 
@@ -1857,7 +1857,7 @@ def _(mo):
     | `avg_stop_spacing_km` | km | average distance between consecutive stops |
     | `total_dist_km` | km | cumulative length of the route |
 
-    Each treatment is estimated twice, once with XGBoost nuisance models and once with LightGBM, so the result can be judged on whether the two learners agree rather than on a single specification. A coefficient counts as evidence only if its 95% confidence interval excludes zero and both learners point the same way.
+    Each treatment is estimated twice, once with XGBoost and once with LightGBM, so the result can be judged on whether the two learners agree rather than on a single specification. A coefficient counts as evidence only if its 95% confidence interval excludes zero and both learners point the same way.
     """)
     return
 
@@ -2116,9 +2116,9 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### 8.1 Automatic tuning of the nuisance models
+    ### 8.1 Automatic tuning of the adjustment models (nuisance functions)
 
-    The nuisance functions in section 6 are not specified by hand. For each outcome and treatment combination, a gradient boosting model is tuned over the parameters that control tree depth, learning rate, regularisation and sampling, using cross-validation on the training set only. Tuning uses a pruning search (Optuna) that stops unpromising trials early, and every finished search is cached as JSON in `lpip_results/`.
+    The adjustment functions (nuisance functions) in section 6 are not specified by hand. For each outcome and treatment combination, a gradient boosting model is tuned over the parameters that control tree depth, learning rate, regularisation and sampling, using cross-validation on the training set only. Tuning uses a pruning search (Optuna) that stops unpromising trials early, and every finished search is cached as JSON in `lpip_results/`.
 
     The cell below holds the shared tuning logic. The two subsections that follow apply it to the six XGBoost and six LightGBM models and report the selected parameters.
     """)
@@ -2312,7 +2312,7 @@ def _(data_url, load_json, np, pd, save_local):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### 8.2 XGBoost nuisance models
+    ### 8.2 XGBoost adjustment models (nuisance functions)
 
     Six models are tuned with XGBoost: three outcome models for delay with one treatment excluded at a time, and three treatment models for the geometry variables. The parameters below are loaded from cache rather than refitted.
     """)
@@ -2425,7 +2425,7 @@ def _(
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### 8.3 LightGBM nuisance models
+    ### 8.3 LightGBM adjustment models (nuisance functions)
 
     The same six models are tuned again with LightGBM, so that every causal estimate in section 6 is available from two independent learners.
     """)
