@@ -57,6 +57,18 @@ def _(mo):
     return
 
 
+@app.cell
+def _(mo):
+    mo.md(r"""
+    <div style="border: 1px solid #dbeafe; background: #f8fafc; border-radius: 12px; padding: 18px 22px; margin: 10px 0 22px 0; line-height: 1.7;">
+    <strong>PhD researcher</strong> · Mustafa Aslan<br/>
+    <strong>Placement supervisor</strong> · Prof. Scott Orford, Cymru Wledig LPIP Rural Wales<br/>
+    <strong>Academic main supervisor</strong> · Prof. Bahman Rostami-Tabar, Cardiff University
+    </div>
+    """)
+    return
+
+
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
@@ -68,12 +80,12 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    - **The network runs close to schedule in a typical hour.** Median delay is **1.05 minutes** with an interquartile range of **4.3 minutes**, measured across 236,671 hourly route records that represent **13.4 million vehicle stop observations**.
-    - **Punctuality under the statutory standard is the exception.** Against the Department for Transport window of 1 minute early to 6 minutes late, **55% of observations are on time**, **26% run early**, **10% are late** and **9% are very late**.
+    - **The network runs close to schedule in a typical hour.** Median delay is **1.1 minutes** with an interquartile range of **4.2 minutes**, measured across 236,671 hourly route records that represent **13.4 million vehicle stop observations**.
+    - **Almost half of observations fall outside the on-time window.** Using the bands defined in section 2, **55% are on time**, **26% run early**, **10% are late** and **9% are very late**.
     - **Early running is the hidden reliability problem.** Services between 05:00 and 07:00 have negative median delay, and the earliest Sunday departures run more than 4 minutes ahead of timetable.
     - **Friday afternoon is the worst window in the week.** Median delay reaches **2.6 minutes at 15:00 on Friday**, more than four times the Saturday figure at the same hour.
     - **Delay can be predicted in level but not in detail.** A full feature set explains **36 to 39% of the variance** in hourly delay. LightGBM is the stronger learner on all seven prediction tasks, by about 2% lower error on delay itself.
-    - **Route shape is not the cause of rural lateness.** After controlling for weather, time, operator and route, neither circuity nor stop spacing has a detectable effect. Only total route length is significant, at about **0.08 minutes less delay per extra kilometre**, a small effect that most likely reflects timetable padding on longer routes.
+    - **Route shape is not the cause of lateness.** After controlling for weather, time, operator and route, neither circuity nor stop spacing has a detectable effect. Only total route length is significant, at about **0.08 minutes less delay per extra kilometre**, a small effect that most likely reflects timetable padding on longer routes.
     - **Weather matters less than operators expect.** Clear, overcast and rainy hours all sit within 0.2 minutes of each other in median delay.
     """)
     return
@@ -82,7 +94,7 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ## 2. Policy context: why a few minutes matter in rural Wales
+    ## 2. Policy context: punctuality on an infrequent network
     """)
     return
 
@@ -90,21 +102,23 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    In an urban area a bus every five minutes absorbs a delayed vehicle: passengers take the next one. Rural Welsh networks work differently. Services across Powys, Ceredigion, Gwynedd, Carmarthenshire and Pembrokeshire often run on 60 to 120 minute headways, so one late bus can mean two hours of lost access to work, healthcare or education.
+    Wales has a mixed bus network. Urban corridors have frequent services, while many rural routes run only a few times a day. The panel in this report covers both: every route in the Welsh timetable that could be matched to vehicle tracking, not a rural subset. That matters for interpretation, because the same delay means something different on a route every ten minutes and a route every two hours.
 
-    Two features of that timetable shape everything that follows.
+    Where service is infrequent, a missed or early bus is not absorbed by the next one. The cost falls on passengers with no alternative, and it is the reason this report treats early running as a failure rather than a minor deviation. Two features of the timetable shape the analysis:
 
-    - **Early departures are worse than moderate lateness.** A bus that leaves ahead of schedule strands passengers who arrived on time, and on many routes there is no later service that day.
-    - **Variability matters as much as the average.** A service that is consistently four minutes late can be planned around. The same average delay with a wide spread produces missed connections and lost confidence.
+    - **Early departures are worse than moderate lateness.** A bus that leaves ahead of schedule strands passengers who arrived on time, and the wait for the next service can be long.
+    - **Variability matters as much as the average.** A service that is consistently a few minutes late can be planned around; the same average with a wide spread produces missed connections and lost confidence.
 
-    Punctuality is classified with the UK Department for Transport and Traffic Commissioner bands:
+    To describe punctuality we group observations into four bands using thresholds commonly used in bus performance reporting:
 
-    | Band | Definition | Meaning for passengers |
+    | Band | Definition | Reading |
     |---|---|---|
-    | Early | more than 1 minute before timetable | a service failure: the bus may already have gone |
-    | On time | 1 minute early to 5 minutes 59 seconds late | the national target is 95% of services |
+    | Early | more than 1 minute before timetable | the bus may already have gone |
+    | On time | 1 minute early to 5 minutes 59 seconds late | the conventional on-time window |
     | Late | 6 to 14 minutes 59 seconds late | noticeable, usually recoverable |
-    | Very late | 15 minutes or more late | severe breakdown, journey abandoned |
+    | Very late | 15 minutes or more late | severe delay |
+
+    These are descriptive labels for this analysis, not a statutory compliance test. The panel is built from operational tracking data rather than a regulatory return, so the shares should be read as evidence about service quality, not as a formal punctuality audit.
 
     The analysis answers three questions in sequence. How late are buses, and when? How much of that delay can be predicted from the data? And what part of the remaining variation is genuinely caused by the shape of the route?
     """)
@@ -119,7 +133,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     The panel combines three sources that share a single key: the hour of observation. Vehicle positions show where a bus actually was, the timetable shows where it should have been, and weather describes the conditions it faced.
@@ -212,9 +226,9 @@ def _(mo):
     mo.md(r"""
     ### 3.1 Vehicle positions and timetable matching
 
-    **Vehicle positions.** The SIRI-VM feed records an automatic vehicle location ping roughly every minute for every bus in service, archived as daily ZIP files of one-minute snapshots. Reading a whole month into memory at once would need more than 40 GB, so the pipeline streams one snapshot at a time and samples 20% of rows uniformly from each. Consecutive pings from the same vehicle are highly correlated, so a uniform sample preserves the delay distribution while cutting processing time by about five times.
+    **Vehicle positions.** The SIRI-VM feed records vehicle locations at high frequency, often several times a minute for an active vehicle. The daily archive is written as one-minute snapshot files, and each file contains many pings per vehicle. For this project the daily files were downloaded from the WISERD OneDrive archive and compressed in the terminal, reducing about 600 GB of raw CSV to 26 GB. Each day contains more than 900 CSV files. Andrew Price in the placement team retrieved the live records. Each file was processed in Python, grouped by minute, vehicle and route, and appended across days into one panel, using a uniform 30% sample of rows.
 
-    **Timetable matching.** A vehicle ping does not carry a GTFS trip identifier. It does carry the operator, the route number, the scheduled departure time from the origin and the direction of travel. The pipeline pre-indexes the Welsh national GTFS feed (`20260520_bus_sch`) into three lookups:
+    **Timetable matching.** A vehicle ping does not carry a GTFS trip identifier. It does carry the operator, the route number, the scheduled departure time from the origin and the direction of travel. The pipeline pre-indexes the national GTFS timetable feed for Wales into three lookups:
 
     1. the first scheduled stop of every trip, expressed as minutes from midnight;
     2. a primary key of operator, route, origin minute and direction, with a direction-free fallback;
@@ -251,12 +265,12 @@ def _(mo):
     The pipeline makes a single pass over the daily archives:
 
     1. stream each one-minute snapshot from its daily ZIP file;
-    2. sample 20% of rows uniformly from every snapshot;
+    2. sample 30% of rows uniformly from every snapshot;
     3. convert UTC telemetry timestamps to local civil time (`Europe/London`);
     4. match every ping to its scheduled trip through the index described above;
     5. find the nearest stop and keep pings within 200 metres;
     6. compute delay against the scheduled time at that stop and unwrap it around midnight;
-    7. assign the Department for Transport punctuality band;
+    7. assign each observation to a delay band;
     8. aggregate to route-hours and merge the Cardiff weather observations;
     9. save the panel as a parquet file that ships with this notebook.
 
@@ -279,7 +293,6 @@ def _(mo):
     | `n_obs` | number of vehicle stop observations behind the route-hour |
     | `mean_delay`, `median_delay` | lateness in minutes against the scheduled time at the nearest stop |
     | `iqr_delay` | interquartile range of delay within the route-hour (p75 minus p25) |
-    | `early_pct`, `on_time_pct`, `late_pct`, `very_late_pct` | share of observations in each Department for Transport band |
     | `planned_stops`, `total_dist_km` | scheduled stops and cumulative route length |
     | `avg_stop_spacing_km` | route length divided by the number of scheduled gaps |
     | `circuity_ratio` | route length divided by the straight-line distance to the farthest point reached |
@@ -287,7 +300,7 @@ def _(mo):
     | `temperature_c`, `precipitation_mm` | hourly temperature and rainfall from the Cardiff station |
     | `relative_humidity_pct`, `wind_speed_kmh`, `condition` | hourly humidity, wind and a short text description of conditions |
 
-    Hours between 00:00 and 04:59 are excluded from the analysis because they contain almost no scheduled service. The full panel is loaded once from the parquet file beside this notebook, and every figure and model below is derived from it.
+    Hours between 00:00 and 04:59 were excluded because they had too few observations for reliable analysis. The full panel is loaded once from the parquet file beside this notebook, and every figure and model below is derived from it.
     """)
     return
 
@@ -322,7 +335,7 @@ def _(hourly_dff):
     return (hourly_dfilter,)
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ## 4. Descriptive findings: how late are buses, and when?
@@ -330,7 +343,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     Section 3 produced a panel of route-hours. This section uses it to answer the first descriptive question, one visualisation at a time: what does the distribution of delay look like, and how does it change across the operating day, the week, the season, the operator and the weather?
@@ -349,30 +362,104 @@ def _(mo):
 
 
 @app.cell
-def _(hourly_dff, plt):
-    # --- TRIMMED : mean_delay (1st - 99th percentile) ---
-    _s = hourly_dff["mean_delay"].dropna()
-    _q01, _q99 = _s.quantile([0.01, 0.99]).values
-    _s_zoom = _s[(_s >= _q01) & (_s <= _q99)]
+def _(hourly_dff, mo):
+    _hour_values = sorted(hourly_dff["hour"].dropna().unique())
+    _dow_values = ["Monday", "Tuesday", "Wednesday", "Thursday", "Friday", "Saturday", "Sunday"]
+    _op_values = sorted(hourly_dff["operator_name"].dropna().unique())
+    _line_values = sorted(hourly_dff["line"].dropna().unique())
 
-    _med = _s_zoom.median()
-    _mean = _s_zoom.mean()
+    hour_filter = mo.ui.range_slider(
+        start=int(_hour_values[0]),
+        stop=int(_hour_values[-1]),
+        value=(int(_hour_values[0]), int(_hour_values[-1])),
+        step=1,
+        show_value=True,
+        label="Operating hour",
+    )
+    dow_filter = mo.ui.multiselect(options=_dow_values, value=_dow_values, label="Day of week")
+    operator_filter = mo.ui.multiselect(options=_op_values, value=_op_values, label="Operator")
+    line_filter = mo.ui.multiselect(options=_line_values, value=_line_values, label="Route line")
 
-    _fig, _ax = plt.subplots(figsize=(8, 4.5), dpi=120, facecolor="#fafafa")
-    _ax.set_facecolor("#ffffff")
-
-    _ax.hist(_s_zoom, bins=60, color="#38bdf8", edgecolor="#0284c7", alpha=0.75, density=True)
-    _ax.axvline(_med, color="#0f172a", lw=2, label=f"Median ({_med:.1f}m)")
-    _ax.axvline(_mean, color="#ef4444", linestyle="--", lw=1.8, label=f"Mean ({_mean:.1f}m)")
-    return
+    mo.vstack([
+        mo.hstack([hour_filter, dow_filter], justify="start", wrap=True, gap=1.2),
+        mo.hstack([operator_filter, line_filter], justify="start", wrap=True, gap=1.2),
+    ])
+    return dow_filter, hour_filter, line_filter, operator_filter
 
 
 @app.cell
-def _(mo):
-    mo.md(r"""
-    **What this shows.** The distribution is centred just above the timetable: the median is 1.1 minutes and the mean 2.4 minutes, so the typical route-hour is close to schedule while the average is pulled to the right by a long late tail. The central half of observations lies between 0.6 minutes early and 3.7 minutes late, and the trimmed window still reaches about 30 minutes at the 99th percentile.
+def _(
+    dow_filter,
+    hour_filter,
+    hourly_dff,
+    line_filter,
+    mo,
+    operator_filter,
+    plt,
+):
+    _filtered = hourly_dff[
+        hourly_dff["hour"].between(*hour_filter.value)
+        & hourly_dff["dow"].isin(dow_filter.value)
+        & hourly_dff["operator_name"].isin(operator_filter.value)
+        & hourly_dff["line"].isin(line_filter.value)
+    ]
 
-    **Why it matters.** A single average hides the two failure modes that passengers actually experience. A quarter of route-hours run more than half a minute early, and the upper tail contains the very late services that produce missed connections. The rest of this section unpacks that tail by hour, day, month, operator and weather.
+    _s = _filtered["mean_delay"].dropna()
+    if len(_s):
+        _lo, _hi = _s.quantile([0.01, 0.99])
+        _s = _s[(_s >= _lo) & (_s <= _hi)]
+
+    dist_n = int(len(_s))
+    dist_median = float(_s.median()) if dist_n else float("nan")
+    dist_mean = float(_s.mean()) if dist_n else float("nan")
+    dist_p25 = float(_s.quantile(0.25)) if dist_n else float("nan")
+    dist_p75 = float(_s.quantile(0.75)) if dist_n else float("nan")
+    dist_iqr = dist_p75 - dist_p25
+
+    _fig, _ax = plt.subplots(figsize=(12, 4.2), dpi=120, facecolor="#fafafa")
+    _ax.set_facecolor("#ffffff")
+
+    if dist_n:
+        _ax.hist(_s, bins=60, color="#38bdf8", edgecolor="#0284c7", alpha=0.75, density=True)
+        _ax.axvline(dist_median, color="#0f172a", lw=2, label=f"Median ({dist_median:.1f}m)")
+        _ax.axvline(dist_mean, color="#ef4444", linestyle="--", lw=1.8, label=f"Mean ({dist_mean:.1f}m)")
+        _ax.axvline(dist_p25, color="#64748b", linestyle=":", lw=1.2)
+        _ax.axvline(dist_p75, color="#64748b", linestyle=":", lw=1.2)
+        _ax.text(
+            0.99, 0.96,
+            f"n = {dist_n:,}\nMedian = {dist_median:.1f} min\nMean = {dist_mean:.1f} min\nIQR = {dist_iqr:.1f} min",
+            transform=_ax.transAxes, ha="right", va="top", fontsize=9.5, color="#0f172a",
+            bbox=dict(boxstyle="round,pad=0.4", facecolor="#ffffff", edgecolor="#cbd5e1", alpha=0.95),
+        )
+    else:
+        _ax.text(0.5, 0.5, "No observations match this filter", ha="center", va="center",
+                 transform=_ax.transAxes, fontsize=11)
+
+    _ax.set_title("Distribution of hourly mean delay", fontsize=12, fontweight="bold", pad=12, color="#0f172a")
+    _ax.set_xlabel("Mean delay (minutes)", fontsize=10.5, fontweight="bold", color="#334155")
+    _ax.set_ylabel("Density", fontsize=10.5, fontweight="bold", color="#334155")
+    _ax.grid(True, linestyle="--", alpha=0.25, color="#64748b", zorder=0)
+    for _sp in ["top", "right"]:
+        _ax.spines[_sp].set_visible(False)
+    for _sp in ["left", "bottom"]:
+        _ax.spines[_sp].set_color("#cbd5e1")
+    if dist_n:
+        _ax.legend(loc="upper left", frameon=True, facecolor="#ffffff", edgecolor="#e2e8f0", fontsize=9)
+
+    plt.tight_layout()
+    _dist_chart = mo.as_html(_fig)
+    plt.close(_fig)
+
+    _dist_chart
+    return dist_iqr, dist_mean, dist_median, dist_n, dist_p25, dist_p75
+
+
+@app.cell(hide_code=True)
+def _(dist_iqr, dist_mean, dist_median, dist_n, dist_p25, dist_p75, mo):
+    mo.md(rf"""
+    **What this shows.** Across the current selection of {dist_n:,} route-hours, median delay is {dist_median:.1f} minutes and mean delay {dist_mean:.1f} minutes, with an interquartile range of {dist_iqr:.1f} minutes. The central half of the selected observations lies between {dist_p25:.1f} and {dist_p75:.1f} minutes. The distribution sits just above the timetable and is pulled to the right by a long late tail.
+
+    **How to read it.** The filters apply to this figure only; every other chart and model uses the full panel. Comparing selections shows whether a pattern is network-wide or confined to particular hours, operators or routes. The shape stays broadly similar, while the centre and the width move.
     """)
     return
 
@@ -380,16 +467,30 @@ def _(mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    ### 4.2 The operating day
+    \n### 4.2 Hour of day\n
     """)
     return
 
 
 @app.cell
-def _(hourly_dfilter, mo, plt):
+def _(DOW_ORDER, mo):
+    hour_dow_filter = mo.ui.multiselect(
+        options=DOW_ORDER,
+        value=DOW_ORDER,
+        label="Day of week",
+    )
+    hour_dow_filter
+    return (hour_dow_filter,)
+
+
+@app.cell
+def _(DOW_ORDER, hour_dow_filter, hourly_dfilter, mo, plt):
+    _selected_dows = hour_dow_filter.value or DOW_ORDER
+    _hf = hourly_dfilter[hourly_dfilter["dow"].isin(_selected_dows)]
+
     # 1. Compute median delay for every single calendar day by hour
     _daily_hourly = (
-        hourly_dfilter
+        _hf
         .groupby(["day", "hour"], observed=True)["median_delay"]
         .median()
         .reset_index()
@@ -495,17 +596,17 @@ def _(hourly_dfilter, mo, plt):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    **What this shows.** Early services run ahead of timetable: the median between 05:00 and 07:00 runs between 0.2 and 0.7 minutes early, and the lower band shows that on a quarter of days the 05:00 median is close to 2 minutes early. Delay rises sharply after 08:00 and forms a broad plateau from 11:00 to 16:00, where the median sits around 1.6 to 1.7 minutes. It eases after 17:00 even though the number of observations is highest then.
+    **What this shows.** Early services run ahead of timetable: the median between 05:00 and 07:00 runs between 0.2 and 0.7 minutes early, and the lower band shows that on a quarter of days the 05:00 median is close to 2 minutes early. Delay rises sharply after 08:00 and forms a broad plateau from 11:00 to 16:00, where the median sits around 1.6 to 1.7 minutes. It eases after 17:00 even though the number of observations is highest then. The figures describe the default view with all days selected; the filter above isolates a single day or a combination.
 
     **Why it matters.** The gap between the morning median and the timetable is the clearest evidence of early running in the data, and it is a service failure that a lateness target alone does not capture. The midday plateau coincides with shopping, school and health appointment travel, when a missed connection is most costly.
     """)
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ### 4.3 Day of the week
@@ -631,10 +732,10 @@ def _(hourly_dfilter, mo, np, plt):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    **What this shows.** Friday is the most delayed day, with a median of 1.1 minutes and an interquartile range of 3.9 minutes. Saturday is the calmest at 0.65 minutes. The middle of the week is tightly grouped between 0.80 and 0.85 minutes, and the wide outer band on every day shows that individual weeks vary much more than the daily averages suggest.
+    **What this shows.** Friday is the most delayed day in the daily series, with a median of 1.2 minutes; the central half of Fridays lies between 0.9 and 1.5 minutes. Saturday is the calmest at 0.7 minutes, and Monday to Thursday are tightly grouped between 0.8 and 0.9. The outer band shows that individual weeks vary more than the weekly averages suggest.
 
     **Why it matters.** The Friday penalty is a recurring operational pattern, not a one-off event, which makes it a candidate for a timetable fix rather than a monitoring problem. Planning Monday to Thursday as one block and Friday as another would match the data better than a single weekly schedule.
     """)
@@ -758,7 +859,7 @@ def _(hourly_dfilter, mo, pd, plt):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     **What this shows.** Median delay moves only between 0.78 and 0.83 minutes from April to August, and the interquartile range stays between 3.0 and 3.3 minutes. August is marginally more variable than spring, but the difference is small compared with the week-to-week variation within any single month.
@@ -815,7 +916,7 @@ def _(DOW_ORDER, hourly_dfilter, mo, np, plt):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     **What this shows.** The heatmap localises the weekly peak at Friday 15:00, where median delay reaches 2.6 minutes against a weekday midday norm of about 1.6. The other extreme is Sunday at 05:00, where the median is 4.1 minutes early. Saturday mornings are consistently close to or ahead of schedule, and median delay falls back towards zero after 21:00 on every day.
@@ -825,7 +926,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ### 4.6 Operator comparison
@@ -871,7 +972,7 @@ def _(hourly_dfilter, mo, plt):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     **What this shows.** The three operators with substantial coverage sit within a narrow band: Stagecoach Merseyside at 0.66 minutes median, First South and West Wales at 0.77 and Stagecoach South Wales at 0.84. The two operators with the highest medians, First Worcestershire and A2B Cars, have only a few thousand observations and a different operating footprint, so their position should not be read as a like-for-like ranking.
@@ -881,7 +982,7 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     ### 4.7 Weather and temperature
@@ -1010,7 +1111,7 @@ def _(hourly_dff, hourly_dfilter, mo, np, plt):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     **What this shows.** The temperature curve rises gently from slightly negative median delay in cool hours to about 1.2 minutes at 20°C and above, then flattens at the hottest extremes. The condition bars are nearly level: clear sky, overcast, drizzle and slight rain all sit between 0.7 and 0.9 minutes, and the differences are smaller than the day-to-day spread within any one condition.
@@ -1028,12 +1129,12 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     Section 4 describes when delay happens. This section asks whether it can be anticipated. That is a different question, and a more demanding one: it requires the model to reproduce the level and variation of delay in hours it has never seen.
 
-    Two metrics do the work. **R²** is the share of variance in delay that the model reproduces, where 1.0 is perfect and 0.0 is no better than predicting the average. **RMSE** is the typical error in minutes, in the same units as the outcome, so it can be compared directly with the 1 minute median and 4.3 minute interquartile range from section 4.
+    Two metrics do the work. **R²** is the share of variance in delay that the model reproduces, where 1.0 is perfect and 0.0 is no better than predicting the average. **RMSE** is the typical error in minutes, in the same units as the outcome, so it can be compared directly with the 1.1 minute median and 4.2 minute interquartile range from section 4.
 
     The sequence is deliberately incremental: a linear model first, then gradient boosting on the same features. The gap between them measures what flexible machine learning adds.
     """)
@@ -1122,8 +1223,11 @@ def _(mo):
 def _(json, load_json, model_dummy, save_local):
     # Estimating this OLS by pinv/SVD on ~165k x 200 takes minutes in the browser
     # (no BLAS in WASM), which trips marimo's RPC timeout before the page can paint.
-    # Cache the fitted summary in lpip_results/ols_summary.json and reuse it.
+    # Cache the fitted summary and the treatment coefficients in
+    # lpip_results/ols_summary.json and reuse them.
     from types import SimpleNamespace
+
+    _TREATMENTS = ("circuity_ratio", "avg_stop_spacing_km", "total_dist_km")
 
     try:
         _cached_ols = load_json("ols_summary.json")
@@ -1137,17 +1241,29 @@ def _(json, load_json, model_dummy, save_local):
             rsquared_adj=_cached_ols["rsquared_adj"],
             fvalue=_cached_ols["fvalue"],
             summary_html=_cached_ols["html"],
+            coefficients=_cached_ols.get("coefficients", {}),
         )
         print(" Loaded OLS summary from lpip_results/ols_summary.json")
     else:
         y = model_dummy["mean_delay"]
         X = model_dummy.drop(columns=["mean_delay"])
         from statsmodels.api import OLS, add_constant
+
         X = add_constant(X)
-        # Fit OLS with robust standard errors (HC1 / White-Huber)
         ols_model = OLS(y, X)
         ols_results = ols_model.fit()
 
+        _ci = ols_results.conf_int()
+        _coefficients = {
+            name: {
+                "coef": float(ols_results.params[name]),
+                "std_err": float(ols_results.bse[name]),
+                "p": float(ols_results.pvalues[name]),
+                "ci_low": float(_ci.loc[name, 0]),
+                "ci_high": float(_ci.loc[name, 1]),
+            }
+            for name in _TREATMENTS
+        }
         _payload = json.dumps(
             {
                 "nobs": float(ols_results.nobs),
@@ -1155,6 +1271,7 @@ def _(json, load_json, model_dummy, save_local):
                 "rsquared_adj": float(ols_results.rsquared_adj),
                 "fvalue": float(ols_results.fvalue),
                 "html": ols_results.summary().as_html(),
+                "coefficients": _coefficients,
             }
         )
         if save_local("ols_summary.json", _payload):
@@ -1185,7 +1302,7 @@ def _(mo, ols_results):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     **What this shows.** The linear model explains 15.4% of the variation in hourly delay (R² 0.154, adjusted 0.153) across 236,671 observations, with an F statistic of 193.9. That is a real signal rather than noise, but most of the variation is left unexplained.
@@ -1203,10 +1320,12 @@ def _(mo):
     return
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
     The second benchmark is gradient boosting, which learns non-linear effects and interactions without being told their form. For each prediction task, XGBoost and LightGBM are tuned by automatic hyperparameter search (Optuna) using cross-validation on the training set only, then scored once on the held-out test set.
+
+    Tuning is not only a prediction exercise. Three of these models estimate delay conditional on the controls, and three estimate a geometry measure conditional on the same controls. Those six models are the nuisance functions of the causal model in section 6. The better they predict, the more completely they absorb confounding, which is why the tuned learners are reused there rather than refitted with defaults. A model that predicts delay well but treatment poorly would leave part of the confounding in the residual and bias the causal estimate.
 
     The table below reports the two all-feature models. The tabs that follow break the same comparison down by task: delay with one geometry variable excluded, and the geometry variables themselves, which is exactly the nuisance work the causal model in section 6 requires.
     """)
@@ -1518,17 +1637,169 @@ def _(mo):
 @app.cell
 def _(mo):
     mo.md(r"""
-    ## 6. Causal findings: does route geometry cause delay?
+    ### 5.4 What would this service do? An interactive check
+
+    The models above are benchmarks, not a tool. This section turns the best one, LightGBM with all features, into a simple check: choose an hour, a day, an operator, a route and a set of conditions, and see the delay the model expects, with an interval that reflects how wrong it usually is.
+
+    The interval is built from 10,000 errors the model made on the training data. Adding those errors to a point prediction and taking the 10th and 90th percentiles gives a range that contains the outcome about 80% of the time in the data the model has seen. It is an illustration of model uncertainty, not a forecast for a specific journey.
+
+    Prediction is where this report started, and it is not where it ends. A model can tell us which hours and routes are likely to be late; it cannot tell us what would happen if a route were redesigned. That is the causal question in section 6.
     """)
     return
 
 
 @app.cell
+def _(data_url, load_csv, sys):
+    import lightgbm as lgb
+
+    _model_path = data_url / "lgb_full_model.txt"
+    if sys.platform == "emscripten":
+        from pyodide.http import open_url
+
+        lgb_predictor = lgb.Booster(model_str=open_url(str(_model_path)).read())
+    else:
+        lgb_predictor = lgb.Booster(model_file=str(_model_path))
+
+    lgb_residuals_sample = load_csv("lgb_train_residuals_sample.csv")["residual"]
+    return lgb_predictor, lgb_residuals_sample
+
+
+@app.cell
+def _(DOW_ORDER, hourly_dfilter, mo, model_df):
+    _hours = sorted(int(h) for h in model_df["hour"].dropna().unique())
+    _operator_names = hourly_dfilter.groupby("operator")["operator_name"].first().to_dict()
+    _operator_options = {name: code for code, name in sorted(_operator_names.items(), key=lambda kv: kv[1])}
+    _lines = sorted(model_df["line"].dropna().unique())
+    _conditions = sorted(model_df["condition"].dropna().unique())
+    _default_operator = model_df["operator"].value_counts().index[0]
+
+
+    def _num(col, step, label, lo=None, hi=None):
+        _lo = float(model_df[col].min()) if lo is None else lo
+        _hi = float(model_df[col].quantile(0.99)) if hi is None else hi
+        return mo.ui.number(
+            start=_lo,
+            stop=_hi,
+            step=step,
+            value=round(float(model_df[col].median()), 2),
+            label=label,
+        )
+
+
+    prediction_inputs = {
+        "hour": mo.ui.dropdown(options=_hours, value=12, label="Hour"),
+        "dow": mo.ui.dropdown(options=DOW_ORDER, value="Friday", label="Day of week"),
+        "operator": mo.ui.dropdown(options=_operator_options, value=_operator_names[_default_operator], label="Operator"),
+        "line": mo.ui.dropdown(options=_lines, value=model_df["line"].value_counts().index[0], label="Route line", searchable=True),
+        "condition": mo.ui.dropdown(options=_conditions, value="Overcast" if "Overcast" in _conditions else _conditions[0], label="Weather"),
+        "planned_stops": _num("planned_stops", 1, "Planned stops"),
+        "total_dist_km": _num("total_dist_km", 0.5, "Total distance (km)"),
+        "max_reach_km": _num("max_reach_km", 0.5, "Maximum reach (km)"),
+        "avg_stop_spacing_km": _num("avg_stop_spacing_km", 0.01, "Average stop spacing (km)"),
+        "circuity_ratio": _num("circuity_ratio", 0.01, "Circuity ratio"),
+        "sched_duration_min": _num("sched_duration_min", 1, "Scheduled duration (min)"),
+        "sched_speed_kmh": _num("sched_speed_kmh", 0.5, "Scheduled speed (km/h)"),
+        "origin_dist_cardiff_km": _num("origin_dist_cardiff_km", 1, "Distance from Cardiff (km)"),
+        "temperature_c": _num("temperature_c", 0.5, "Temperature (C)"),
+        "precipitation_mm": _num("precipitation_mm", 0.1, "Rainfall (mm)"),
+        "relative_humidity_pct": _num("relative_humidity_pct", 1, "Humidity (%)"),
+        "wind_speed_kmh": _num("wind_speed_kmh", 1, "Wind speed (km/h)"),
+    }
+
+    mo.vstack([
+        mo.md("**Service**"),
+        mo.hstack(
+            [prediction_inputs[k] for k in ("hour", "dow", "operator", "line", "condition")],
+            wrap=True,
+            gap=0.8,
+            justify="start",
+        ),
+        mo.md("**Route geometry and weather**"),
+        mo.hstack(
+            [prediction_inputs[k] for k in ("planned_stops", "total_dist_km", "max_reach_km", "avg_stop_spacing_km", "circuity_ratio", "sched_duration_min")],
+            wrap=True,
+            gap=0.8,
+            justify="start",
+        ),
+        mo.hstack(
+            [prediction_inputs[k] for k in ("sched_speed_kmh", "origin_dist_cardiff_km", "temperature_c", "precipitation_mm", "relative_humidity_pct", "wind_speed_kmh")],
+            wrap=True,
+            gap=0.8,
+            justify="start",
+        ),
+    ])
+    return (prediction_inputs,)
+
+
+@app.cell
+def _(
+    dum_vars,
+    lgb_predictor,
+    lgb_residuals_sample,
+    ml_train_df,
+    mo,
+    outcome_var,
+    pd,
+    plt,
+    prediction_inputs,
+):
+    _input_row = pd.DataFrame([{k: w.value for k, w in prediction_inputs.items()}])
+    _dummies = pd.get_dummies(_input_row, columns=dum_vars, drop_first=False, dtype=int, prefix_sep="_")
+    _feature_cols = [c for c in ml_train_df.columns if c != outcome_var]
+    _X = _dummies.reindex(columns=_feature_cols, fill_value=0)
+
+    _pred = float(lgb_predictor.predict(_X.to_numpy())[0])
+    _ci_low = float(_pred + lgb_residuals_sample.quantile(0.10))
+    _ci_high = float(_pred + lgb_residuals_sample.quantile(0.90))
+
+    _fig, _ax = plt.subplots(figsize=(9, 2.6), dpi=120, facecolor="#fafafa")
+    _ax.set_facecolor("#ffffff")
+    _ax.hist(_pred + lgb_residuals_sample, bins=50, color="#38bdf8", edgecolor="#0284c7", alpha=0.75, density=True)
+    _ax.axvline(_pred, color="#0f172a", lw=2, label=f"Prediction ({_pred:.1f} min)")
+    _ax.axvline(_ci_low, color="#ef4444", linestyle="--", lw=1.4, label="10th and 90th percentile")
+    _ax.axvline(_ci_high, color="#ef4444", linestyle="--", lw=1.4)
+    _ax.set_xlabel("Delay (minutes)", fontsize=10, fontweight="bold", color="#334155")
+    _ax.set_yticks([])
+    _ax.set_title("Predicted delay and the spread of training errors", fontsize=11.5, fontweight="bold", color="#0f172a")
+    _ax.grid(axis="x", linestyle="--", alpha=0.25, color="#64748b")
+    for _sp in ["top", "right", "left"]:
+        _ax.spines[_sp].set_visible(False)
+    _ax.spines["bottom"].set_color("#cbd5e1")
+    _ax.legend(loc="upper right", frameon=True, facecolor="#ffffff", edgecolor="#e2e8f0", fontsize=8.5)
+    plt.tight_layout()
+    _chart = mo.as_html(_fig)
+    plt.close(_fig)
+
+    mo.vstack([
+        mo.md(rf"""
+    **Predicted delay: {_pred:.1f} minutes** · 80% interval **{_ci_low:.1f} to {_ci_high:.1f} minutes**
+
+    A prediction near zero means the service is expected on time; a negative value means early.
+    """),
+        _chart,
+        mo.md("*Point prediction from LightGBM with all features. The interval adds 10,000 training errors to the point prediction and takes their 10th and 90th percentiles. It is an illustration of model uncertainty, not a forecast for a specific journey.*"),
+    ])
+    return
+
+
+@app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    Prediction and causation answer different questions. A model that predicts delay well may still be useless for policy, because it does not say what happens to delay if a route is redesigned. This section asks the causal question directly for three features that planners can actually influence: how indirect a route is, how far apart its stops are, and how long it is.
+    ## 6. Causal findings: does route geometry cause delay?
+    """)
+    return
 
-    The problem is confounding. Long routes differ from short ones not only in length but in the operators that run them, the hours they serve and the weather they face. A naive regression would attribute all of that to geometry. Double machine learning removes the confounding by learning it explicitly with flexible models, then estimating the geometry effect from what those models cannot explain.
+
+@app.cell(hide_code=True)
+def _(mo):
+    mo.md(r"""
+    Prediction and causation answer different questions. A model that predicts delay well may still be useless for policy, because it does not say what happens to delay if a route is redesigned. This section asks the causal question directly.
+
+    The three treatments are the geometry choices a network planner can actually change: how indirect a route is, how far apart its stops are, and how long it is. They are fixed before the hour being observed, which makes them plausible causes of delay rather than consequences of it. Weather and time of day matter for prediction, but they are not levers a transport authority can pull.
+
+    The problem is confounding. Long routes differ from short ones not only in length but in the operators that run them, the hours they serve, the terrain they cross and the timetable padding they carry. A naive regression would attribute all of that to geometry. OLS in particular forces every control to enter linearly and additively, so when delay responds non-linearly to hour, weather or route length, the geometry coefficients absorb the misfit. Adding interactions does not solve this: it requires knowing which interactions matter, and the model still imposes a functional form.
+
+    Double machine learning avoids that by learning the two nuisance functions with gradient boosting, then estimating the geometry effect from their residuals after cross-fitting. Section 6.2 shows how much the answer changes: the linear model finds a large, significant circuity effect and a positive distance effect; the flexible causal model finds no circuity effect and a negative distance effect.
     """)
     return
 
@@ -1669,9 +1940,47 @@ def _(mo):
 
 
 @app.cell
+def _(dml_summary, mo, ols_results, pd):
+    _ols = ols_results.coefficients
+    _dml = dml_summary.set_index(["Learner", "Treatment"])
+
+
+    def _fmt(_coef, _p):
+        _p_txt = "<0.001" if _p < 0.001 else f"{_p:.3f}"
+        return f"{_coef:.2f} ({_p_txt})"
+
+
+    _rows = []
+    for _name, _label, _xgb, _lgb in [
+        ("circuity_ratio", "Circuity ratio", "xgb_circuity", "lgb_circuity"),
+        ("avg_stop_spacing_km", "Average stop spacing (km)", "xgb_stop", "lgb_stop"),
+        ("total_dist_km", "Total route distance (km)", "xgb_dist", "lgb_dist"),
+    ]:
+        _rows.append({
+            "Treatment": _label,
+            "OLS coefficient (p)": _fmt(_ols[_name]["coef"], _ols[_name]["p"]),
+            "DML, XGBoost (p)": _fmt(_dml.loc[(_xgb, _name), "coef"], _dml.loc[(_xgb, _name), "p-value"]),
+            "DML, LightGBM (p)": _fmt(_dml.loc[(_lgb, _name), "coef"], _dml.loc[(_lgb, _name), "p-value"]),
+        })
+
+    ols_vs_dml = pd.DataFrame(_rows)
+
+    mo.vstack([
+        mo.md(r"""
+    The linear model from section 5.2 is the natural comparison. It is adjusted for the same controls, but it fits one coefficient per variable. The table sets its geometry coefficients beside the causal estimates.
+    """),
+        ols_vs_dml,
+        mo.md(r"""
+    For circuity the OLS estimate is more than five times its standard error, yet the causal confidence interval spans zero for both learners. For total distance the sign reverses: OLS says longer routes are later, the causal model says slightly earlier. That reversal is the clearest evidence in the report that a significant regression coefficient is not a causal effect.
+    """),
+    ])
+    return
+
+
+@app.cell
 def _(mo):
     mo.md(r"""
-    Each row is one learner and one treatment. `coef` is the estimated causal effect in minutes per unit of the treatment, `std err` and `t` describe its precision, `p-value` is the two-sided test, and `CI lower` and `CI upper` give the 95% confidence interval.
+    Each row is one learner and one treatment. `coef` is the estimated causal effect in minutes per unit of the treatment, `std err` describes its precision, `p-value` is the two-sided test, and `95% CI` gives the confidence interval.
     """)
     return
 
@@ -1704,8 +2013,16 @@ def _(
         .rename(columns={"P>|t|": "p-value", "2.5 %": "CI lower", "97.5 %": "CI upper"})
         .round(3)
     )
-    dml_summary
-    return
+
+    # Compact view: keep the evidence columns visible in a narrow report page.
+    _dml_display = dml_summary[["Learner", "Treatment", "coef", "std err", "p-value"]].copy()
+    _dml_display["95% CI"] = (
+        dml_summary["CI lower"].map(lambda v: f"{v:.3f}")
+        + " to "
+        + dml_summary["CI upper"].map(lambda v: f"{v:.3f}")
+    )
+    _dml_display
+    return (dml_summary,)
 
 
 @app.cell
@@ -1735,7 +2052,7 @@ def _(mo):
 
     1. **Treat early running as a failure in its own right.** One observation in four is early, morning services have negative median delay, and the earliest Sunday departures run more than four minutes ahead of timetable. A punctuality target built only around lateness will never see this. Hold-back discipline at rural timing points, and an early-share indicator reported alongside on-time performance, would make the problem visible and manageable.
 
-    2. **Give Friday afternoon its own running times.** The weekly peak is Friday at 15:00, at 2.6 minutes median delay and a 3.9 minute interquartile range, against about 1.6 minutes at weekday midday. A separate Friday schedule with additional recovery time on the worst corridors would address a recurring pattern rather than a random bad day.
+    2. **Give Friday afternoon its own running times.** The weekly peak is Friday at 15:00, at 2.6 minutes median delay, against about 1.6 minutes at weekday midday. A separate Friday schedule with additional recovery time on the worst corridors would address a recurring pattern rather than a random bad day.
 
     3. **Judge operators on reliability, not on averages.** The major operators differ by less than 0.2 minutes in median delay but by around a minute in interquartile range. Contract metrics based on the 80th or 90th percentile of excess wait time would reward predictable service rather than a good average that hides bad days.
 
