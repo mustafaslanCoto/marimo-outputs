@@ -467,7 +467,7 @@ def _(dist_iqr, dist_mean, dist_median, dist_n, dist_p25, dist_p75, mo):
 @app.cell(hide_code=True)
 def _(mo):
     mo.md(r"""
-    \n### 4.2 Hour of day\n
+    ### 4.2 Hour of day
     """)
     return
 
