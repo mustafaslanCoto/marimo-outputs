@@ -1704,10 +1704,7 @@ def _(DOW_ORDER, hourly_dfilter, mo, model_df):
     pred_planned_stops = _num("planned_stops", 1, "Planned stops")
     pred_total_dist = _num("total_dist_km", 0.5, "Total distance (km)")
     pred_max_reach = _num("max_reach_km", 0.5, "Maximum reach (km)")
-    pred_stop_spacing = _num("avg_stop_spacing_km", 0.01, "Average stop spacing (km)")
-    pred_circuity = _num("circuity_ratio", 0.01, "Circuity ratio")
     pred_sched_duration = _num("sched_duration_min", 1, "Scheduled duration (min)")
-    pred_sched_speed = _num("sched_speed_kmh", 0.5, "Scheduled speed (km/h)")
     pred_origin_distance = _num("origin_dist_cardiff_km", 1, "Distance from Cardiff (km)")
     pred_temperature = _num("temperature_c", 0.5, "Temperature (C)")
     pred_precipitation = _num("precipitation_mm", 0.1, "Rainfall (mm)")
@@ -1718,11 +1715,10 @@ def _(DOW_ORDER, hourly_dfilter, mo, model_df):
         mo.md("**Service**"),
         mo.hstack([pred_hour, pred_dow, pred_operator, pred_line, pred_condition], wrap=True, gap=0.8, justify="start"),
         mo.md("**Route geometry and weather**"),
-        mo.hstack([pred_planned_stops, pred_total_dist, pred_max_reach, pred_stop_spacing, pred_circuity, pred_sched_duration], wrap=True, gap=0.8, justify="start"),
-        mo.hstack([pred_sched_speed, pred_origin_distance, pred_temperature, pred_precipitation, pred_humidity, pred_wind], wrap=True, gap=0.8, justify="start"),
+        mo.hstack([pred_planned_stops, pred_total_dist, pred_max_reach, pred_sched_duration], wrap=True, gap=0.8, justify="start"),
+        mo.hstack([pred_origin_distance, pred_temperature, pred_precipitation, pred_humidity, pred_wind], wrap=True, gap=0.8, justify="start"),
     ])
     return (
-        pred_circuity,
         pred_condition,
         pred_dow,
         pred_hour,
@@ -1734,8 +1730,6 @@ def _(DOW_ORDER, hourly_dfilter, mo, model_df):
         pred_planned_stops,
         pred_precipitation,
         pred_sched_duration,
-        pred_sched_speed,
-        pred_stop_spacing,
         pred_temperature,
         pred_total_dist,
         pred_wind,
@@ -1752,7 +1746,6 @@ def _(
     model_df,
     outcome_var,
     pd,
-    pred_circuity,
     pred_condition,
     pred_dow,
     pred_hour,
@@ -1764,8 +1757,6 @@ def _(
     pred_planned_stops,
     pred_precipitation,
     pred_sched_duration,
-    pred_sched_speed,
-    pred_stop_spacing,
     pred_temperature,
     pred_total_dist,
     pred_wind,
@@ -1779,10 +1770,7 @@ def _(
         "planned_stops": pred_planned_stops.value,
         "total_dist_km": pred_total_dist.value,
         "max_reach_km": pred_max_reach.value,
-        "avg_stop_spacing_km": pred_stop_spacing.value,
-        "circuity_ratio": pred_circuity.value,
         "sched_duration_min": pred_sched_duration.value,
-        "sched_speed_kmh": pred_sched_speed.value,
         "origin_dist_cardiff_km": pred_origin_distance.value,
         "temperature_c": pred_temperature.value,
         "precipitation_mm": pred_precipitation.value,
@@ -1796,6 +1784,11 @@ def _(
                 _input[_key] = float(model_df[_key].median())
             else:
                 _input[_key] = model_df[_key].mode().iloc[0]
+
+    # Derived geometry: these move automatically with the inputs above.
+    _input["avg_stop_spacing_km"] = float(_input["total_dist_km"]) / max(1.0, float(_input["planned_stops"]) - 1.0)
+    _input["circuity_ratio"] = float(_input["total_dist_km"]) / max(0.1, float(_input["max_reach_km"]))
+    _input["sched_speed_kmh"] = float(_input["total_dist_km"]) / (max(1.0, float(_input["sched_duration_min"])) / 60.0)
 
     _input_row = pd.DataFrame([_input])
     _dummies = pd.get_dummies(_input_row, columns=dum_vars, drop_first=False, dtype=int, prefix_sep="_")
@@ -1818,6 +1811,7 @@ def _(
       </div>
     </div>
     <p style="color:#64748b; font-size:13px; margin-top:6px;">0 means on time; negative values mean early.</p>
+    <p style="color:#64748b; font-size:13px; margin-top:2px;">Derived: stop spacing {_input["avg_stop_spacing_km"]:.2f} km · circuity {_input["circuity_ratio"]:.2f} · scheduled speed {_input["sched_speed_kmh"]:.1f} km/h</p>
     """)
     return
 
