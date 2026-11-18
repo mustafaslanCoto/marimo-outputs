@@ -1742,7 +1742,7 @@ def _(DOW_ORDER, hourly_dfilter, mo, model_df):
     )
 
 
-@app.cell
+@app.cell(hide_code=True)
 def _(
     dum_vars,
     lgb_predictor,
@@ -1814,7 +1814,7 @@ def _(
       </div>
       <div style="flex:1; min-width:220px; border:1px solid #e2e8f0; background:#ffffff; border-radius:14px; padding:18px 22px;">
         <div style="font-size:12px; letter-spacing:.08em; text-transform:uppercase; color:#64748b;">Likely range</div>
-        <div style="font-size:30px; font-weight:650; line-height:1.25; color:#0f172a;">{_ci_low:.1f} to {_ci_high:.1f}<span style="font-size:16px; font-weight:500;"> minutes</span></div>
+        <div style="font-size:30px; font-weight:650; line-height:1.25; color:#0f172a;">{_ci_low:.1f} to {_ci_high:.1f}<span style="font-size:16px; font-weight:500;"> minutes</span> <span style="font-size:13px; font-weight:500; color:#64748b;">(10th to 90th percentile)</span></div>
       </div>
     </div>
     <p style="color:#64748b; font-size:13px; margin-top:6px;">0 means on time; negative values mean early.</p>
