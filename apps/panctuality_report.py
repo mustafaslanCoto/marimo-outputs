@@ -52,7 +52,7 @@ def _(mo):
 
     **Data:** SIRI-VM vehicle positions, the GTFS timetable feed for Wales, and Cardiff hourly weather.
 
-    **Code and cached results:** [github.com/mustafaslanCoto/marimo-outputs](https://github.com/mustafaslanCoto/marimo-outputs)
+    **Code and cached results:** [github.com/mustafaslanCoto/lpip_project](https://github.com/mustafaslanCoto/lpip_project)
     """)
     return
 
