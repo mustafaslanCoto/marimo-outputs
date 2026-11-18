@@ -1958,9 +1958,9 @@ def _(dml_summary, mo, ols_results, pd):
     ]:
         _rows.append({
             "Treatment": _label,
-            "OLS coefficient (p)": _fmt(_ols[_name]["coef"], _ols[_name]["p"]),
-            "DML, XGBoost (p)": _fmt(_dml.loc[(_xgb, _name), "coef"], _dml.loc[(_xgb, _name), "p-value"]),
-            "DML, LightGBM (p)": _fmt(_dml.loc[(_lgb, _name), "coef"], _dml.loc[(_lgb, _name), "p-value"]),
+            "OLS (p)": _fmt(_ols[_name]["coef"], _ols[_name]["p"]),
+            "DML XGB (p)": _fmt(_dml.loc[(_xgb, _name), "coef"], _dml.loc[(_xgb, _name), "p-value"]),
+            "DML LGB (p)": _fmt(_dml.loc[(_lgb, _name), "coef"], _dml.loc[(_lgb, _name), "p-value"]),
         })
 
     ols_vs_dml = pd.DataFrame(_rows)
